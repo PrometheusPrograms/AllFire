@@ -20,21 +20,57 @@ feature/*  →  PR into staging  →  staging (Neon branch, Render preview, Verc
 ## 2. What runs on every PR (quality + security gate)
 
 All free, none dependent on GitHub's paid Advanced Security tier (which private repos don't
-get for CodeQL/secret scanning):
+get for CodeQL/secret scanning).
 
-| Check | Tool | Blocks merge on |
-|---|---|---|
-| Lint | `ruff` (Python), `eslint` (TS) | Any error |
-| Format | `ruff format --check`, `prettier --check` | Any diff |
-| Type check | `mypy`, `tsc --noEmit` | Any error |
-| Unit + integration tests | `pytest`, `vitest` | Any failure |
-| Coverage on money-math code | `pytest --cov=app/services` | Below threshold (start at 90%+ — this is the Kelly/ARORC/cost-basis code, it should be close to fully covered) |
-| Dependency vulnerabilities | `pip-audit`, `npm audit` | Any high/critical |
-| Secret scanning | `gitleaks` | Any detected secret, even in history of the diff |
-| Migration safety | custom script, see §3 | Any undeclared destructive change |
-| Build | `next build`, backend import smoke test | Any failure |
+Two of these checks — secret scanning and migration safety — aren't backend-specific, so
+they live in their own **always-on workflow with no path filter**, separate from
+`backend-ci.yml`/`frontend-ci.yml`. A secret can leak in a frontend file or a docs commit
+just as easily as in `backend/`; scoping those checks to `paths: ['backend/**']` would have
+meant a frontend-only or docs-only PR got zero coverage from them.
 
-Example backend workflow:
+| Check | Tool | Runs in | Blocks merge on |
+|---|---|---|---|
+| Secret scanning | `gitleaks` | `security-and-safety.yml` (all PRs) | Any detected secret, even in the diff's history |
+| Migration safety | custom script, see §3 | `security-and-safety.yml` (all PRs) | Any undeclared destructive change |
+| Lint | `ruff` | `backend-ci.yml` (`backend/**` only) | Any error |
+| Format | `ruff format --check` | `backend-ci.yml` | Any diff |
+| Type check | `mypy` | `backend-ci.yml` | Any error |
+| Dependency vulnerabilities | `pip-audit` | `backend-ci.yml` | Any high/critical |
+| Unit + integration tests | `pytest` | `backend-ci.yml` | Any failure |
+| Coverage on money-math code | `pytest --cov=app/services` | `backend-ci.yml` | Below 90% |
+| Build | backend import smoke test | `backend-ci.yml` | Any failure |
+| Lint / type check / build | `eslint`, `tsc --noEmit`, `next build` | `frontend-ci.yml` (`frontend/**` only) | Any error |
+| Dependency vulnerabilities | `npm audit` | `frontend-ci.yml` | Any high/critical |
+
+The always-on workflow:
+
+```yaml
+# .github/workflows/security-and-safety.yml
+name: Security & Migration Safety
+on: pull_request   # no path filter — runs on every PR regardless of what changed
+
+jobs:
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }   # gitleaks needs history, not just the working tree
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+
+  migration-safety:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install -r backend/requirements.txt
+      - name: Migration safety check
+        run: python scripts/check_migration_safety.py
+```
+
+Example backend-specific workflow (path-filtered, since these checks genuinely only apply
+when backend code changed):
 
 ```yaml
 # .github/workflows/backend-ci.yml
@@ -44,7 +80,7 @@ on:
     paths: ['backend/**']
 
 jobs:
-  quality-and-security:
+  quality:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -67,16 +103,20 @@ jobs:
         run: mypy app/
       - name: Dependency vulnerabilities
         run: pip-audit -r requirements.txt
-      - name: Secret scan
-        uses: gitleaks/gitleaks-action@v2
-      - name: Migration safety check
-        run: python scripts/check_migration_safety.py
       - name: Apply migrations to test DB
         run: alembic upgrade head
         env: { DATABASE_URL: postgresql://postgres:test@localhost/postgres }
       - name: Tests + coverage
         run: pytest --cov=app/services --cov-fail-under=90
 ```
+
+`frontend-ci.yml` follows the same shape, scoped to `paths: ['frontend/**']`, running
+`eslint`, `tsc --noEmit`, `npm audit`, and `next build`.
+
+**Branch protection** (require these checks to pass before merge, disallow direct pushes)
+is configured separately, in GitHub's repo settings under Branches — not in a workflow file
+— for both `staging` and `main`. Set it to require `security-and-safety` plus the relevant
+`backend-ci`/`frontend-ci` jobs, once they exist.
 
 ## 3. Migration safety (backward compatibility + no data loss)
 

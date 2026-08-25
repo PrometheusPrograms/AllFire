@@ -1,0 +1,36 @@
+name: Security & Migration Safety
+
+on: pull_request   # no path filter — runs on every PR regardless of what changed
+
+jobs:
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }   # gitleaks needs history, not just the working tree
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  migration-safety:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }   # the script diffs against the PR's base branch
+
+      - name: Fetch base branch for migration diff
+        run: git fetch origin ${{ github.base_ref }}
+
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+
+      - run: pip install -r requirements.txt
+
+      - name: Migration safety check
+        run: python scripts/check_migration_safety.py
+        env:
+          MIGRATION_SAFETY_BASE_REF: origin/${{ github.base_ref }}
