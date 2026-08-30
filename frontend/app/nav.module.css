@@ -1,0 +1,67 @@
+/* Dark mode is the default; :global(html[data-theme='light']) overrides
+   below. See globals.css / layout.tsx for how the attribute is set. */
+:global(html) {
+  --nav-border: #2a2a2d;
+  --nav-background: #0a0a0a;
+  --nav-text-secondary: #9a9a9e;
+  --nav-text: #ededed;
+}
+
+:global(html[data-theme="light"]) {
+  --nav-border: #e6e6e8;
+  --nav-background: #ffffff;
+  --nav-text-secondary: #666;
+  --nav-text: #171717;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.85rem 1.5rem;
+  border-bottom: 1px solid var(--nav-border);
+  background: var(--nav-background);
+}
+
+.brand {
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: -0.01em;
+  margin-right: 0.5rem;
+}
+
+.link {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--nav-text-secondary);
+  padding: 0.3rem 0;
+  border-bottom: 2px solid transparent;
+}
+
+.link:hover {
+  color: var(--nav-text);
+}
+
+.linkActive {
+  color: var(--nav-text);
+  border-bottom-color: #4f46e5;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.themeToggle {
+  border: 1px solid var(--nav-border);
+  background: transparent;
+  color: var(--nav-text);
+  border-radius: 7px;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.themeToggle:hover {
+  border-color: #4f46e5;
+}

@@ -6,4 +6,5 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 dev.db
+dev_local.db
 .env

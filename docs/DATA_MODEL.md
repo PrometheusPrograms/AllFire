@@ -56,6 +56,15 @@ CREATE TABLE trade_types (
     created_at                  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Seeded (see alembic/versions/32c3020a1e5a_seed_trade_types.py) with the 7 types
+-- actually in use: ROCT PUT, RULE ONE PUT, ROCT CALL, RULE ONE CALL (all OPTIONS),
+-- ROCS BULL PUT SPREAD (OPTIONS, uses trades.long_strike), and BTO/STC (STOCK,
+-- plain buy/sell that feeds cost_basis directly, no options involved).
+-- `ROCT *` = trading shares (short-term). `RULE ONE *` = long-term investment shares
+-- (`RULE ONE CALL` sells long-term shares at/above full intrinsic value). This
+-- distinction lives in each row's `description` today; promote it to a structured
+-- column if/when the trading-vs-long-term portfolio view (see ARCHITECTURE.md
+-- roadmap) needs to query on it directly instead of parsing description text.
 CREATE TABLE commissions (
     id                 SERIAL PRIMARY KEY,
     account_id          INTEGER NOT NULL REFERENCES accounts(id),
@@ -103,12 +112,14 @@ CREATE TABLE trades (
     schwab_order_id                                        TEXT,
     notes                                                   TEXT,
     needs_review                                             BOOLEAN NOT NULL DEFAULT false,
+    import_batch                                               TEXT,  -- bookkeeping only, see PRODUCTION_IMPORT_RUNBOOK.md §4; null for hand-entered trades
     created_at                                                 TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_trades_account ON trades(account_id);
 CREATE INDEX idx_trades_ticker ON trades(ticker_id);
 CREATE INDEX idx_trades_parent ON trades(trade_parent_id);
+CREATE INDEX idx_trades_import_batch ON trades(import_batch);
 
 -- Append-only lifecycle log. This is the entire answer to "immutable history":
 -- a trade's status, close date, and closing debit are never columns on `trades`
@@ -122,6 +133,7 @@ CREATE TABLE trade_events (
     total_debit              NUMERIC(14,2),
     schwab_order_id            TEXT,           -- the closing/rolling order, distinct from the opening one on `trades`
     notes                       TEXT,
+    import_batch                 TEXT,           -- bookkeeping only, see PRODUCTION_IMPORT_RUNBOOK.md §4; null for hand-entered events
     created_at                    TIMESTAMPTZ NOT NULL DEFAULT now()
     -- Deliberately no updated_at, no soft-delete flag: rows are never modified
     -- after insert. If a mistake needs correcting, insert a new ADJUST row that
@@ -129,6 +141,7 @@ CREATE TABLE trade_events (
 );
 
 CREATE INDEX idx_trade_events_trade ON trade_events(trade_id);
+CREATE INDEX idx_trade_events_import_batch ON trade_events(import_batch);
 
 -- Current status, derived — never stored, so it can never drift from the truth.
 CREATE VIEW v_trade_current_status AS

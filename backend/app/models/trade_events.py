@@ -38,6 +38,9 @@ class TradeEvent(Base):
         Text
     )  # the closing/rolling order, distinct from the opening one on `trades`
     notes: Mapped[str | None] = mapped_column(Text)
+    # Bookkeeping only, not part of the domain model — see
+    # docs/PRODUCTION_IMPORT_RUNBOOK.md §4. Null for hand-entered events.
+    import_batch: Mapped[str | None] = mapped_column(Text, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )

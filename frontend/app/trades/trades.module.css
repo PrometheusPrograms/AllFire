@@ -1,0 +1,652 @@
+/* Dark mode is the default; :global(html[data-theme='light']) overrides
+   below. See globals.css / layout.tsx for how the attribute is set. */
+:global(html) {
+  --tr-background: #0a0a0a;
+  --tr-card-bg: #151517;
+  --tr-border: #2a2a2d;
+  --tr-input-bg: #1c1c1f;
+  --tr-text: #ededed;
+  --tr-text-secondary: #9a9a9e;
+  --tr-tabs-bg: #1c1c1f;
+  --tr-row-border: #22222a;
+  --tr-row-hover: #1b1c2b;
+  --tr-kpi-attention-bg: #241d0d;
+}
+
+:global(html[data-theme="light"]) {
+  --tr-background: #f7f7f8;
+  --tr-card-bg: #fff;
+  --tr-border: #e6e6e8;
+  --tr-input-bg: #fff;
+  --tr-text: #171717;
+  --tr-text-secondary: #666;
+  --tr-tabs-bg: #ececef;
+  --tr-row-border: #f0f0f2;
+  --tr-row-hover: #f5f6ff;
+  --tr-kpi-attention-bg: #fffaf0;
+}
+
+.page {
+  min-height: 100%;
+  background: var(--tr-background, #f7f7f8);
+  padding: 1.75rem 1.5rem 4rem;
+}
+
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.title {
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* Account tabs */
+.tabs {
+  display: flex;
+  gap: 0.35rem;
+  background: var(--tr-tabs-bg, #ececef);
+  border-radius: 10px;
+  padding: 0.25rem;
+  width: fit-content;
+}
+
+.tab {
+  border: none;
+  background: transparent;
+  padding: 0.4rem 0.9rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--tr-text-secondary, #666);
+  cursor: pointer;
+}
+
+.tabActive {
+  background: var(--tr-card-bg, #fff);
+  color: var(--tr-text, #171717);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+/* KPI strip */
+.kpiGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.75rem;
+}
+
+.kpiCard {
+  background: var(--tr-card-bg, #fff);
+  border: 1px solid var(--tr-border, #e6e6e8);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.kpiCardAttention {
+  border-color: #f5c76a;
+  background: var(--tr-kpi-attention-bg, #fffaf0);
+}
+
+.kpiCardClickable {
+  cursor: pointer;
+}
+
+.kpiCardClickable:hover {
+  border-color: #4f46e5;
+}
+
+.kpiLabel {
+  /* Fixed height (fits two lines at this size) so the value row lines up
+     across cards regardless of whether a given label wraps or not. */
+  display: flex;
+  align-items: flex-start;
+  min-height: 2.1rem;
+  line-height: 1.05rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--tr-text-secondary, #888);
+}
+
+.kpiValue {
+  font-size: 1.35rem;
+  font-weight: 700;
+  font-family: var(--font-geist-mono, ui-monospace, monospace);
+}
+
+.kpiSubvalue {
+  font-size: 0.75rem;
+  color: var(--tr-text-secondary, #888);
+}
+
+/* Chart card */
+.card {
+  background: var(--tr-card-bg, #fff);
+  border: 1px solid var(--tr-border, #e6e6e8);
+  border-radius: 14px;
+  padding: 1.1rem 1.25rem;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.cardTitle {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.cardTitleTotal {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--tr-text-secondary, #888);
+}
+
+.presetGroup {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.presetButton {
+  border: 1px solid var(--tr-border, #d9d9dc);
+  background: var(--tr-card-bg, #fff);
+  color: var(--tr-text-secondary, #555);
+  border-radius: 7px;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.presetButtonActive {
+  background: #4f46e5;
+  border-color: #4f46e5;
+  color: #fff;
+}
+
+.dateInput {
+  border: 1px solid var(--tr-border, #d9d9dc);
+  border-radius: 7px;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.78rem;
+  background: var(--tr-input-bg, #fff);
+  color: inherit;
+  font-family: inherit;
+}
+
+.bucketToggle {
+  display: flex;
+  gap: 0.25rem;
+  margin-left: 0.5rem;
+}
+
+/* Filter bar */
+.filterBar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.searchInput {
+  border: 1px solid var(--tr-border, #d9d9dc);
+  border-radius: 8px;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.85rem;
+  background: var(--tr-input-bg, #fff);
+  color: inherit;
+  font-family: inherit;
+  min-width: 140px;
+}
+
+.select {
+  border: 1px solid var(--tr-border, #d9d9dc);
+  border-radius: 8px;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.85rem;
+  background: var(--tr-input-bg, #fff);
+  color: inherit;
+  font-family: inherit;
+}
+
+.statusChips {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.chip {
+  border: 1px solid var(--tr-border, #d9d9dc);
+  background: var(--tr-card-bg, #fff);
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--tr-text-secondary, #555);
+}
+
+.chipActive {
+  background: #eef0ff;
+  border-color: #4f46e5;
+  color: #4f46e5;
+}
+
+.clearButton {
+  border: none;
+  background: transparent;
+  color: var(--tr-text-secondary, #888);
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.pageSizeLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--tr-text-secondary, #888);
+}
+
+/* Table */
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.table thead th {
+  position: sticky;
+  top: 0;
+  text-align: left;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--tr-text-secondary, #888);
+  border-bottom: 1px solid var(--tr-border, #e6e6e8);
+  cursor: pointer;
+  white-space: nowrap;
+  background: var(--tr-card-bg, #fff);
+}
+
+.table tbody td {
+  padding: 0.45rem 0.7rem;
+  border-bottom: 1px solid var(--tr-row-border, #f0f0f2);
+  white-space: nowrap;
+}
+
+.table tbody tr {
+  cursor: pointer;
+}
+
+.table tbody tr.simRow {
+  cursor: default;
+}
+
+.table tbody tr:hover {
+  background: var(--tr-row-hover, #f5f6ff);
+}
+
+.statusWithAction {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.outcomeToggle {
+  display: inline-flex;
+  gap: 0.2rem;
+}
+
+.outcomeToggle .chip {
+  padding: 0.15rem 0.5rem;
+  font-size: 0.7rem;
+}
+
+.numeric {
+  font-family: var(--font-geist-mono, ui-monospace, monospace);
+  text-align: right;
+}
+
+/* Higher specificity than `.table thead th { text-align: left }` so the
+   header label lines up directly above its right-aligned, decimal-aligned
+   numeric column instead of staying left-aligned. */
+.table thead th.numeric {
+  text-align: right;
+}
+
+.emptyState {
+  padding: 2.5rem 1rem;
+  text-align: center;
+  color: var(--tr-text-secondary, #888);
+  font-size: 0.9rem;
+}
+
+/* Ticker cell is its own clickable target (opens the lifetime position
+   drawer), independent of the row click (opens the single-trade drawer). */
+.tickerLink {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+}
+
+.tickerLink:hover {
+  text-decoration-color: currentColor;
+  color: #4f46e5;
+}
+
+/* Trade type color indicator */
+.typeCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.typeDot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Status badges — fixed width so the pill reads as a consistent shape
+   regardless of the status text length (e.g. "Open" vs "Assigned"). */
+.badge {
+  display: inline-block;
+  width: 5.5rem;
+  text-align: center;
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+/* Solid, saturated fills (rather than pastel-bg/dark-text) so the five
+   statuses stay clearly distinguishable at a glance in both themes. */
+.badgeOpen {
+  background: #16a34a;
+  color: #fff;
+}
+
+.badgeRolled {
+  background: #4f46e5;
+  color: #fff;
+}
+
+.badgeAssigned {
+  background: #d97706;
+  color: #fff;
+}
+
+.badgeExpired {
+  background: #475569;
+  color: #fff;
+}
+
+.badgeClosed {
+  background: #dc2626;
+  color: #fff;
+}
+
+/* Pagination */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 0.75rem;
+  font-size: 0.8rem;
+  color: var(--tr-text-secondary, #888);
+}
+
+.pageButtons {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.pageButton {
+  border: 1px solid var(--tr-border, #d9d9dc);
+  background: var(--tr-card-bg, #fff);
+  color: inherit;
+  border-radius: 7px;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.pageButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pageButtonActive {
+  background: #4f46e5;
+  border-color: #4f46e5;
+  color: #fff;
+}
+
+.pageEllipsis {
+  padding: 0.3rem 0.2rem;
+  color: var(--tr-text-secondary, #888);
+}
+
+/* Detail drawer */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 20;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.drawer {
+  width: min(480px, 100%);
+  height: 100%;
+  background: var(--tr-card-bg, #fff);
+  padding: 1.5rem;
+  overflow-y: auto;
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.12);
+}
+
+/* The ticker drill-down needs room for a summary grid plus a trade table,
+   so it gets a wider variant of the same slide-over. */
+.drawerWide {
+  width: min(880px, 100%);
+}
+
+.positionSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.notionalPanel {
+  border: 1px dashed var(--tr-border, #d9d9dc);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.notionalForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
+.notionalField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--tr-text-secondary, #888);
+}
+
+.notionalField input,
+.notionalField select {
+  min-width: 7rem;
+}
+
+.notionalList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+
+.notionalRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.82rem;
+  font-family: var(--font-geist-mono, ui-monospace, monospace);
+}
+
+.badgeSim {
+  background: #7c3aed;
+  color: #fff;
+}
+
+.drawerHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.drawerTitle {
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.drawerSubtitle {
+  font-size: 0.8rem;
+  color: var(--tr-text-secondary, #888);
+  margin-top: 0.15rem;
+}
+
+.closeButton {
+  border: none;
+  background: transparent;
+  font-size: 1.1rem;
+  cursor: pointer;
+  color: var(--tr-text-secondary, #888);
+  line-height: 1;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+  margin-bottom: 1.25rem;
+}
+
+.detailItem {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.detailLabel {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--tr-text-secondary, #888);
+}
+
+.detailValue {
+  font-size: 0.9rem;
+  font-family: var(--font-geist-mono, ui-monospace, monospace);
+}
+
+.sectionTitle {
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.timelineItem {
+  border-left: 2px solid #4f46e5;
+  padding-left: 0.75rem;
+  padding-bottom: 0.1rem;
+}
+
+.timelineType {
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.timelineDate {
+  font-size: 0.75rem;
+  color: var(--tr-text-secondary, #888);
+}
+
+.timelineNotes {
+  font-size: 0.78rem;
+  color: var(--tr-text-secondary, #777);
+  margin-top: 0.15rem;
+}
+
+.loading,
+.error {
+  padding: 1rem;
+  font-size: 0.85rem;
+  color: var(--tr-text-secondary, #888);
+}
+
+.error {
+  color: #991b1b;
+}
+

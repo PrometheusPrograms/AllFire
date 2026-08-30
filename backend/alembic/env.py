@@ -1,6 +1,8 @@
+import sqlite3
+from datetime import UTC, datetime
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, event, pool
 
 from alembic import context
 from app.config import settings
@@ -63,6 +65,16 @@ def run_migrations_online() -> None:
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
+
+    # See app/db.py — same dev-only shim so `now()` server_defaults don't
+    # blow up when migrations are dry-run against SQLite locally.
+    if connectable.dialect.name == "sqlite":
+
+        @event.listens_for(connectable, "connect")
+        def _register_sqlite_now(dbapi_connection: sqlite3.Connection, _) -> None:
+            dbapi_connection.create_function(
+                "now", 0, lambda: datetime.now(UTC).isoformat(sep=" ")
+            )
 
     with connectable.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)

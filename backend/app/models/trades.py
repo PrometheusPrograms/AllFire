@@ -37,8 +37,9 @@ class Trade(Base):
     days_to_expiration: Mapped[int | None] = mapped_column(Integer)
     num_of_contracts: Mapped[int | None] = mapped_column(Integer)
     num_of_shares: Mapped[int | None] = mapped_column(Integer)
-    strike_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
-    long_strike: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
+    # Strikes are whole-cent dollar amounts (see alembic/versions/a2d04ed4d626).
+    strike_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    long_strike: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     price_per_share: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
     current_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
     credit_debit: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
@@ -55,6 +56,9 @@ class Trade(Base):
     needs_review: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
+    # Bookkeeping only, not part of the domain model — see
+    # docs/PRODUCTION_IMPORT_RUNBOOK.md §4. Null for hand-entered trades.
+    import_batch: Mapped[str | None] = mapped_column(Text, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )

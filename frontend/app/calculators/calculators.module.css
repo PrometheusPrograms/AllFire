@@ -1,0 +1,175 @@
+/* Dark mode is the default; :global(html[data-theme='light']) overrides
+   below. See globals.css / layout.tsx for how the attribute is set. */
+:global(html) {
+  --calc-background: #0a0a0a;
+  --calc-card-bg: #151517;
+  --calc-border: #2a2a2d;
+  --calc-input-bg: #1c1c1f;
+  --calc-text-secondary: #9a9a9e;
+  --calc-result-bg: #16183a;
+  --calc-result-border: #2b2f66;
+}
+
+:global(html[data-theme="light"]) {
+  --calc-background: #f7f7f8;
+  --calc-card-bg: #fff;
+  --calc-border: #e6e6e8;
+  --calc-input-bg: #fff;
+  --calc-text-secondary: #666;
+  --calc-result-bg: #f0f4ff;
+  --calc-result-border: #dbe3ff;
+}
+
+.page {
+  min-height: 100%;
+  background: var(--calc-background, #f7f7f8);
+  padding: 2.5rem 1.5rem 4rem;
+}
+
+.header {
+  max-width: 1100px;
+  margin: 0 auto 2rem;
+}
+
+.title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.subtitle {
+  margin-top: 0.35rem;
+  color: var(--calc-text-secondary, #666);
+  font-size: 0.95rem;
+}
+
+.grid {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
+@media (max-width: 800px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.card {
+  background: var(--calc-card-bg, #fff);
+  border: 1px solid var(--calc-border, #e6e6e8);
+  border-radius: 14px;
+  padding: 1.5rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.cardTitle {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.cardDescription {
+  font-size: 0.85rem;
+  color: var(--calc-text-secondary, #666);
+  margin-top: -0.5rem;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--calc-text-secondary, #444);
+}
+
+.input {
+  border: 1px solid var(--calc-border, #d9d9dc);
+  border-radius: 8px;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.95rem;
+  font-family: inherit;
+  background: var(--calc-input-bg, #fff);
+  color: inherit;
+}
+
+.input:focus {
+  outline: 2px solid #4f46e5;
+  outline-offset: 1px;
+}
+
+.button {
+  margin-top: 0.25rem;
+  align-self: flex-start;
+  background: #4f46e5;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.55rem 1.1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.button:hover:not(:disabled) {
+  background: #4338ca;
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.result {
+  margin-top: 0.25rem;
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  font-size: 0.9rem;
+  background: var(--calc-result-bg, #f0f4ff);
+  border: 1px solid var(--calc-result-border, #dbe3ff);
+}
+
+.resultRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.resultRow + .resultRow {
+  margin-top: 0.25rem;
+}
+
+.resultLabel {
+  color: var(--calc-text-secondary, #555);
+}
+
+.resultValue {
+  font-weight: 700;
+  font-family: var(--font-geist-mono, ui-monospace, monospace);
+}
+
+.error {
+  margin-top: 0.25rem;
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  font-size: 0.85rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+
