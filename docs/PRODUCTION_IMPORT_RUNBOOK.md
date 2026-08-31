@@ -85,3 +85,11 @@ the script refuse an accidental double-run against a live account.
    file. It only needed to exist for this one operation.
 6. Confirm (again) that `ENABLE_SPREADSHEET_IMPORT` is unset on the production Render
    service — this runbook is the only path real historical data should ever take into prod.
+
+## 6. Schwab gap-fill (dividends and BTO)
+
+OKW workbooks do not record cash dividends or many outright share purchases.
+Those are imported separately via the Schwab CLI — see `docs/SCHWAB_IMPORT.md`.
+That path is incremental (activity-id idempotency), still a script against a
+`DATABASE_URL`, and still should be rehearsed on a Neon branch before
+production. It does **not** re-import option trades from Schwab.

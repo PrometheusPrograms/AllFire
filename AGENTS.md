@@ -24,9 +24,11 @@ manual `ALTER TABLE`. Full detail: `docs/ARCHITECTURE.md`, `docs/DATA_MODEL.md`.
 - `trade_events` — append-only lifecycle log (`OPEN/ROLL/ADJUST/CLOSE/EXPIRE/ASSIGN`).
   Current status is *derived*, never stored — see `v_trade_current_status` view. Also has
   `import_batch`.
-- `cash_flows`, `cost_basis` (running totals via `v_cost_basis_running` view, computed at
-  query time — never stored), `bankroll`, `commissions`. `cost_basis` is populated by
-  `scripts/backfill_cost_basis.py` (and, later, live writes): BTO/STC plus ASSIGN on
+- `cash_flows` (dividends from the Schwab CLI use `transaction_type='DIVIDEND'` and
+  `schwab_activity_id`), `cost_basis` (running totals via `v_cost_basis_running` view,
+  computed at query time — never stored), `bankroll`, `commissions`. `cost_basis` is
+  populated by `scripts/backfill_cost_basis.py` (and live writes from Schwab BTO import):
+  BTO/STC plus ASSIGN on
   `ROCT`/`RULE ONE` PUT/CALL. **Bull put spreads never write `cost_basis`** — they
   cannot be assigned. A closed `ROCS BULL PUT SPREAD` converts to a sibling
   `ROCT PUT` or `RULE ONE PUT` (same account/ticker/expiration/short strike, opened
@@ -60,6 +62,9 @@ manual `ALTER TABLE`. Full detail: `docs/ARCHITECTURE.md`, `docs/DATA_MODEL.md`.
     is a drop-in for `openpyxl.load_workbook()` everywhere this file might be opened.
   - `import_historical.py` — the CLI from PRODUCTION_IMPORT_RUNBOOK.md
     (`--account rule1|roth --year YYYY --file ...`).
+  - `schwab_parser.py` / `schwab_loader.py` / `import_schwab.py` — Schwab Trader API
+    gap-fill: cash dividends → `cash_flows`, equity BUY → `BTO` + `cost_basis`.
+    Auth is `schwab_auth.py` (token file gitignored). Docs: `docs/SCHWAB_IMPORT.md`.
   - `backfill_cost_basis.py` — one-time (and re-runnable) derivation of
     `cost_basis` from BTO/STC and ASSIGN events. Spreads are excluded.
 - `backend/app/api/import_data.py` — staging-only `POST /api/import/spreadsheet`

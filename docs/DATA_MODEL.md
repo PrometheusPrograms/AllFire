@@ -110,6 +110,7 @@ CREATE TABLE trades (
     risk_capital_per_share                              NUMERIC(12,4),
     arorc                                                NUMERIC(10,6),
     schwab_order_id                                        TEXT,
+    schwab_activity_id                                     TEXT UNIQUE,  -- Schwab CLI; stable when order id is missing
     notes                                                   TEXT,
     needs_review                                             BOOLEAN NOT NULL DEFAULT false,
     import_batch                                               TEXT,  -- bookkeeping only, see PRODUCTION_IMPORT_RUNBOOK.md §4; null for hand-entered trades
@@ -168,9 +169,11 @@ CREATE TABLE cash_flows (
     ticker_id             INTEGER REFERENCES tickers(id),
     trade_id               INTEGER REFERENCES trades(id),
     transaction_date         DATE NOT NULL,
-    transaction_type           TEXT NOT NULL,      -- 'SELL PUT', 'BUY TO CLOSE', ...
+    transaction_type           TEXT NOT NULL,      -- 'SELL PUT', 'BUY TO CLOSE', 'DIVIDEND', ...
     amount                       NUMERIC(12,2) NOT NULL,
     description                    TEXT,
+    schwab_activity_id               TEXT UNIQUE,  -- Schwab CLI import; null otherwise
+    import_batch                       TEXT,         -- bookkeeping; see SCHWAB_IMPORT.md
     created_at                       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

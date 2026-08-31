@@ -1,0 +1,144 @@
+[
+  {
+    "activityId": 1001,
+    "time": "2025-03-14T14:30:00+0000",
+    "tradeDate": "2025-03-14T05:00:00+0000",
+    "type": "DIVIDEND_OR_INTEREST",
+    "description": "Qualified Dividend",
+    "netAmount": 12.50,
+    "transferItems": [
+      {
+        "instrument": { "assetType": "EQUITY", "symbol": "AAPL" },
+        "amount": 0,
+        "price": 0,
+        "cost": 12.50
+      }
+    ]
+  },
+  {
+    "activityId": 1002,
+    "time": "2025-03-15T14:30:00+0000",
+    "tradeDate": "2025-03-15T05:00:00+0000",
+    "type": "DIVIDEND_OR_INTEREST",
+    "description": "Margin Interest",
+    "netAmount": -3.20,
+    "transferItems": []
+  },
+  {
+    "activityId": 1003,
+    "time": "2025-03-16T14:30:00+0000",
+    "tradeDate": "2025-03-16T05:00:00+0000",
+    "type": "DIVIDEND_OR_INTEREST",
+    "description": "Dividend Reinvestment",
+    "netAmount": 0,
+    "transferItems": [
+      {
+        "instrument": { "assetType": "EQUITY", "symbol": "MSFT" },
+        "amount": 0.4,
+        "price": 400,
+        "cost": -160
+      }
+    ]
+  },
+  {
+    "activityId": 2001,
+    "time": "2025-04-02T15:00:00+0000",
+    "tradeDate": "2025-04-02T05:00:00+0000",
+    "type": "TRADE",
+    "orderId": 88001,
+    "description": "Buy AAPL",
+    "netAmount": -1500.65,
+    "transferItems": [
+      {
+        "instrument": { "assetType": "EQUITY", "symbol": "AAPL" },
+        "amount": 10,
+        "price": 150,
+        "cost": -1500,
+        "instruction": "BUY",
+        "positionEffect": "OPENING"
+      },
+      {
+        "instrument": { "assetType": "CURRENCY", "symbol": "USD" },
+        "amount": 0,
+        "cost": -0.65,
+        "feeType": "COMMISSION"
+      }
+    ]
+  },
+  {
+    "activityId": 2002,
+    "time": "2025-04-03T15:00:00+0000",
+    "tradeDate": "2025-04-03T05:00:00+0000",
+    "type": "TRADE",
+    "orderId": 88002,
+    "description": "Sell AAPL",
+    "netAmount": 800,
+    "transferItems": [
+      {
+        "instrument": { "assetType": "EQUITY", "symbol": "AAPL" },
+        "amount": -5,
+        "price": 160,
+        "cost": 800,
+        "instruction": "SELL",
+        "positionEffect": "CLOSING"
+      }
+    ]
+  },
+  {
+    "activityId": 2003,
+    "time": "2025-04-04T15:00:00+0000",
+    "tradeDate": "2025-04-04T05:00:00+0000",
+    "type": "TRADE",
+    "description": "Sold 1 AAPL 150 PUT",
+    "netAmount": 220,
+    "transferItems": [
+      {
+        "instrument": {
+          "assetType": "OPTION",
+          "symbol": "AAPL  250418P00150000",
+          "underlyingSymbol": "AAPL",
+          "putCall": "PUT",
+          "strikePrice": 150
+        },
+        "amount": -1,
+        "price": 2.20,
+        "cost": 220
+      }
+    ]
+  },
+  {
+    "activityId": 2004,
+    "time": "2025-04-18T15:00:00+0000",
+    "tradeDate": "2025-04-18T05:00:00+0000",
+    "type": "TRADE",
+    "description": "Assigned AAPL 150 PUT",
+    "netAmount": -15000,
+    "transferItems": [
+      {
+        "instrument": {
+          "assetType": "OPTION",
+          "symbol": "AAPL  250418P00150000",
+          "underlyingSymbol": "AAPL"
+        },
+        "amount": 1,
+        "price": 0,
+        "cost": 0
+      },
+      {
+        "instrument": { "assetType": "EQUITY", "symbol": "AAPL" },
+        "amount": 100,
+        "price": 150,
+        "cost": -15000
+      }
+    ]
+  },
+  {
+    "activityId": 3001,
+    "time": "2025-05-01T15:00:00+0000",
+    "tradeDate": "2025-05-01T05:00:00+0000",
+    "type": "JOURNAL",
+    "description": "Internal journal",
+    "netAmount": 0,
+    "transferItems": []
+  }
+]

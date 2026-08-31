@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     jwt_secret: str = "change-me"
     enable_spreadsheet_import: bool = False
     cors_origins: str = "http://localhost:3000"
+    schwab_client_id: str = ""
+    schwab_client_secret: str = ""
+    schwab_redirect_uri: str = "https://127.0.0.1:8182"
+    schwab_account_hash_rule1: str = ""
+    schwab_account_hash_roth: str = ""
 
     @property
     def cors_origins_list(self) -> list[str]:

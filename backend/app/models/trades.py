@@ -1,7 +1,18 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, Text, text
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -17,6 +28,7 @@ class Trade(Base):
         Index("idx_trades_account", "account_id"),
         Index("idx_trades_ticker", "ticker_id"),
         Index("idx_trades_parent", "trade_parent_id"),
+        UniqueConstraint("schwab_activity_id", name="uq_trades_schwab_activity_id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -52,6 +64,8 @@ class Trade(Base):
     risk_capital_per_share: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
     arorc: Mapped[Decimal | None] = mapped_column(Numeric(10, 6))
     schwab_order_id: Mapped[str | None] = mapped_column(Text)
+    # Schwab activity id is the stable unique key when order id is missing.
+    schwab_activity_id: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
     needs_review: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
