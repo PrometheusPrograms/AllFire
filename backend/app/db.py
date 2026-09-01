@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
 
-engine = create_engine(settings.database_url)
+engine = create_engine(settings.sqlalchemy_database_url)
 
 # Schema `server_default`s use Postgres's `now()` — this app targets Postgres
 # in every real environment. SQLite (used only for quick local scripts/tests,

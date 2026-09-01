@@ -18,7 +18,7 @@ app = FastAPI(title="Trade Tracker API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
-    allow_origin_regex=r"https://all-fire-.*\.vercel\.app",
+    allow_origin_regex=r"https://all-fire(?:-.*)?\.vercel\.app",
     allow_methods=["*"],
     allow_headers=["*"],
 )
