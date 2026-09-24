@@ -1,8 +1,10 @@
-# Schwab CLI import (dividends + BTO)
+# Schwab CLI import (dividends + BTO + STC)
 
 Gap-fills what OKW never wrote: **cash dividends** into `cash_flows`, and
-**outright equity buys** into `BTO` trades plus `cost_basis`. Option trades
-already imported from the spreadsheet are not synced from Schwab.
+**outright equity buys/sells** into `BTO`/`STC` trades plus `cost_basis`.
+Option trades already imported from the spreadsheet are not synced from
+Schwab — an equity leg that Schwab describes as an assignment/exercise is
+left for the OKW/`trade_events` ASSIGN flow, not written here.
 
 This is a CLI against a `DATABASE_URL` you supply — not an app route, not
 OAuth in the browser UI.
@@ -40,6 +42,10 @@ tokens expire on Schwab's schedule (historically about a week) — re-run
 
 ## 3. Import
 
+Imports write only to the `DATABASE_URL` you pass — they do not sync Neon branches.
+Experiments belong on **dev**. The ledger you will live with is imported on **staging**,
+then **production**, with the same date range. See [ENVIRONMENTS.md](ENVIRONMENTS.md).
+
 Always `--dry-run` first, against **dev**, not production:
 
 ```
@@ -56,7 +62,8 @@ Then drop `--dry-run`. Repeat with `--account roth`. Pass
 
 Idempotency is **per Schwab activity id**, not wipe-and-replace. Re-running
 the same date range skips rows already stored. `import_batch` is
-`schwab_rule1_div_bto` / `schwab_roth_div_bto` (bookkeeping only).
+`schwab_rule1_div_bto` / `schwab_roth_div_bto` (bookkeeping only — the name
+predates STC support but is kept for `import_batch` continuity).
 
 ## 4. What is written vs skipped
 
@@ -64,10 +71,21 @@ the same date range skips rows already stored. `import_batch` is
 |---|---|
 | Cash dividend (`DIVIDEND` / `DIVIDEND_OR_INTEREST`) | `cash_flows` (`transaction_type='DIVIDEND'`) |
 | Equity BUY | `trades` (`BTO`) + `OPEN` event + `cost_basis` |
+| Equity SELL (plain, not assignment/exercise) | `trades` (`STC`) + `OPEN` event + `cost_basis` (negative shares/amount — proceeds reduce basis) |
+| Equity SELL (plain, not assignment/exercise) | `trades` (`STC`) + `OPEN` event + `cost_basis` (negative shares/amount — proceeds reduce basis) |
 | Same activity/order id already in DB | Skip |
 | Equity BUY matching an existing BTO (account, ticker, date, shares, similar price) | Skip |
-| Equity BUY matching an ASSIGN cost-basis lot (or contracts×100 on that ASSIGN date) | Skip (OKW assignment, not a BTO) |
-| DRIP, interest, equity SELL, option fills, journals, assignment/exercise | Printed as `review` — not imported |
+| Equity SELL matching an existing STC (same match keys) | Skip |
+| Equity BUY matching an ASSIGN cost-basis lot (or contracts×100 at/near the strike within 45 settlement days) | Skip (OKW assignment, not a BTO) |
+| Equity SELL matching a CALL ASSIGN lot (contracts×100 at/near the strike within 45 settlement days; a fill may cover several lots) | Skip (OKW assignment, not an STC) |
+| DRIP, interest, option fills, journals, assignment/exercise, incomplete rows (missing ticker/shares/price) | Printed as `review` — not imported. Work these via `scripts/manual_entry.py` or an explicit skip (see PRODUCTION_IMPORT_RUNBOOK.md §3). |
+
+Both BTO and STC math roll up automatically: `cost_basis` running totals and
+`v_cost_basis_running` are computed at query time from whatever rows exist,
+so no separate "recompute" step is needed after an import — the app's
+existing trades/analytics endpoints reflect new rows on the next request.
+Share quantities are rounded to the nearest whole share (`ROUND_HALF_UP`);
+truncating with `int()` under-counted lots (e.g. LULU 9 vs statement 10).
 
 ## 5. Schema keys
 

@@ -18,6 +18,7 @@ work (Phase 3+) real data to build against.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import timedelta
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -25,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Account, Ticker, Trade, TradeEvent, TradeType
 from scripts.okw_parser import ParsedTrade
+from scripts.link_roll_parents import apply_roll_parent_links
 
 ZERO = Decimal("0")
 
@@ -106,6 +108,9 @@ def load_parsed_trades(
 
     account = get_or_create_account(session, account_name)
     result = ImportResult()
+    # Previous column in this file that ended RESULT=ROLL, for the same
+    # ticker/type/contracts — the OKW continuation sits in the next column.
+    pending_rolls: list[tuple[int, tuple[str, str, int], date]] = []
 
     for parsed in parsed_trades:
         if not parsed.ticker:
@@ -124,12 +129,36 @@ def load_parsed_trades(
 
         ticker = get_or_create_ticker(session, parsed.ticker)
 
+        line_key = (
+            ticker.ticker,
+            parsed.trade_type_name,
+            parsed.num_of_contracts or 0,
+        )
+        parent_id = None
+        # Continuations open on the parent's ROLL date. A later column that
+        # is itself a new original strike (RBLX $36.50 vs $36) must not steal
+        # the pending parent — original strike stays on the parent row.
+        roll_match_date = parsed.trade_date
+        for i, (pending_id, pending_key, pending_roll_date) in enumerate(pending_rolls):
+            if pending_key != line_key:
+                continue
+            if roll_match_date is None or pending_roll_date is None:
+                continue
+            if roll_match_date < pending_roll_date:
+                continue
+            if roll_match_date > pending_roll_date + timedelta(days=5):
+                continue
+            parent_id = pending_id
+            pending_rolls.pop(i)
+            break
+
         trade = Trade(
             account_id=account.id,
             ticker_id=ticker.id,
             ticker=ticker.ticker,
             trade_type_id=trade_type.id,
             trade_type=parsed.trade_type_name,
+            trade_parent_id=parent_id,
             date_trade_open=parsed.trade_date,
             expiration_date=parsed.expiration_date,
             days_to_expiration=parsed.days_to_expiration,
@@ -149,6 +178,10 @@ def load_parsed_trades(
             net_credit_per_share=parsed.net_credit_per_share,
             risk_capital_per_share=parsed.risk_capital_per_share,
             arorc=parsed.arorc,
+            delta=parsed.delta,
+            probability_of_winning=parsed.probability_of_winning,
+            final_arorc=parsed.final_arorc,
+            result_net_credit=parsed.result_net_credit,
             notes=parsed.notes,
             needs_review=needs_review,
             import_batch=import_batch,
@@ -169,13 +202,36 @@ def load_parsed_trades(
         )
         result.events_created += 1
 
+        if parsed.event_type == "ROLL":
+            closing_event_date = (
+                parsed.result_date or parsed.expiration_date or parsed.trade_date
+            )
+            if closing_event_date is not None:
+                pending_rolls.append((trade.id, line_key, closing_event_date))
+
         if parsed.event_type:
+            # RESULT DATE is hand-typed and often blank/stale in the workbook.
+            # CLOSE/ASSIGN use the trade's own date. EXPIRE uses expiration.
+            # ROLL uses RESULT DATE when present — that's the date the next
+            # column opened, and what `trade_parent_id` matching keys off.
+            if parsed.event_type == "EXPIRE":
+                closing_event_date = parsed.expiration_date or parsed.trade_date
+            elif parsed.event_type == "ROLL":
+                closing_event_date = (
+                    parsed.result_date or parsed.expiration_date or parsed.trade_date
+                )
+            else:
+                closing_event_date = parsed.trade_date
             session.add(
                 TradeEvent(
                     trade_id=trade.id,
                     event_type=parsed.event_type,
-                    event_date=parsed.result_date or parsed.trade_date,
-                    closing_debit=parsed.closing_debit,
+                    event_date=closing_event_date,
+                    closing_debit=(
+                        parsed.closing_debit
+                        if parsed.closing_debit is not None
+                        else ZERO
+                    ),
                     total_debit=parsed.total_debit,
                     notes=(
                         f"Imported RESULT={parsed.result_raw!r}" if parsed.result_raw else None
@@ -185,4 +241,8 @@ def load_parsed_trades(
             )
             result.events_created += 1
 
+    # Cross-year (or non-adjacent) continuations: previous batch's ROLL
+    # tip → this file's next column. Adjacent same-file rolls are already
+    # parented above; this only fills leftovers.
+    apply_roll_parent_links(session, account_id=account.id)
     return result

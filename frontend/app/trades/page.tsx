@@ -136,11 +136,15 @@ export default function TradesPage() {
 
   useEffect(() => {
     setSummaryLoading(true);
-    getAnalyticsSummary({ account: accountParam })
+    getAnalyticsSummary({
+      account: accountParam,
+      date_from: range.start,
+      date_to: range.end,
+    })
       .then(setSummary)
       .catch(() => setSummary(null))
       .finally(() => setSummaryLoading(false));
-  }, [accountParam]);
+  }, [accountParam, range.start, range.end]);
 
   useEffect(() => {
     setChartLoading(true);
@@ -220,8 +224,8 @@ export default function TradesPage() {
     })
       .then((response) => {
         if (filters.statuses.length > 1) {
-          const filtered = response.items.filter((t) =>
-            filters.statuses.includes(t.display_status)
+          const filtered = response.items.filter(
+            (t) => t.display_status != null && filters.statuses.includes(t.display_status)
           );
           setTrades(filtered);
           setTradesTotal(filtered.length);

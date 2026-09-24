@@ -65,13 +65,18 @@ trade-tracker/
 
 | Env | Database | Backend | Frontend | Purpose |
 |---|---|---|---|---|
-| Local | Neon branch `dev` (or local Postgres via Docker) | `uvicorn` on localhost | `next dev` | Day-to-day work |
-| Staging | Neon branch `staging` (free, instant) | Render PR preview | Vercel PR preview | Test a change against realistic data before it touches prod |
-| Production | Neon branch `main` | Render production service | Vercel production | Real trades, real money data |
+| Local | Neon branch `dev` (or local Postgres via Docker) | `uvicorn` on localhost | `next dev` | Scratch pad: test trades, experiments |
+| Staging | Neon branch `staging` (copy-on-write from production) | Render staging / preview | Vercel staging / preview | Verify the app against a clone of real data |
+| Production | Neon branch `production` (git branch is `main`) | Render production service | Vercel production | Canonical ledger |
 
-Neon's branching is the reason this environment split costs nothing extra — a staging
-database is a copy-on-write branch of prod, not a second thing you have to provision or pay
-for.
+Git promotes **code**; Alembic promotes **schema** per environment. **Rows do not** flow
+from `dev` → staging → production. Staging is not a database you later push into prod.
+See [ENVIRONMENTS.md](ENVIRONMENTS.md).
+
+Neon's branching is the reason this environment split costs nothing extra — `dev` and
+`staging` are copy-on-write children of production, not second paid databases. Reset a
+child from its parent to get a fresh copy of prod (wiping that child's extra rows). Never
+reset production from a child.
 
 ## 5. Deployment flow
 

@@ -4,6 +4,7 @@ values live in whichever column its row-1 header cell occupies (columns are
 not assumed to be a fixed 2 apart — see test for an irregular spread case).
 """
 
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -20,6 +21,8 @@ ROWS = {
     "PRICE": 13,
     "DAYS TO EXPIRATION (DTE)": 15,
     "EXPIRATION DATE": 16,
+    "PROBABILITY OF WINNING": 21,
+    "DELTA": 22,
     "SHORT STRIKE": 23,
     "LONG STRIKE": 26,
     "CREDIT/(DEBIT)": 29,
@@ -66,6 +69,8 @@ def test_parses_a_single_leg_put_block():
             "PRICE": 85.04,
             "DAYS TO EXPIRATION (DTE)": 7,
             "EXPIRATION DATE": "2026-01-09",
+            "PROBABILITY OF WINNING": 0.85,
+            "DELTA": 0.15,
             "SHORT STRIKE": 55.5,
             "CREDIT/(DEBIT)": 0.22,
             "COMMISSION (Per share)": 0.0041,
@@ -92,6 +97,8 @@ def test_parses_a_single_leg_put_block():
     assert trade.num_of_contracts == 2
     assert trade.num_of_shares == 200
     assert trade.event_type == "EXPIRE"
+    assert trade.delta == Decimal("0.15")
+    assert trade.probability_of_winning == Decimal("0.85")
     assert trade.needs_review is False
 
 
@@ -175,3 +182,133 @@ def test_missing_expected_labels_raises_instead_of_silently_parsing_garbage():
 
     with pytest.raises(ValueError, match="doesn't look like an OKW trade sheet"):
         parse_trade_sheet(ws)
+
+
+def test_formula_header_uses_underlying_and_quoted_type():
+    ws = _make_workbook()
+    _set_block(
+        ws,
+        5,
+        '=E4&" ROCT PUT"',
+        {"UNDERLYING": "RBLX", "PRICE": 50.16, "RESULT": None},
+    )
+
+    [trade] = parse_trade_sheet(ws)
+
+    assert trade.ticker == "RBLX"
+    assert trade.trade_type_name == "ROCT PUT"
+
+
+def test_prob_otm_derived_from_delta_when_pow_is_dash():
+    ws = _make_workbook()
+    _set_block(
+        ws,
+        5,
+        "RBLX ROCT PUT",
+        {
+            "UNDERLYING": "RBLX",
+            "DELTA": 0.05,
+            "PROBABILITY OF WINNING": "-",
+            "RESULT": None,
+        },
+    )
+
+    [trade] = parse_trade_sheet(ws)
+
+    assert trade.delta == Decimal("0.05")
+    assert trade.probability_of_winning == Decimal("0.950000")
+
+
+def test_parses_rblx_roll_columns_like_okw_sheet():
+    """Golden two-column roll matching the live OKW RBLX ROCT PUT example."""
+    ws = _make_workbook()
+    ws.cell(row=57, column=2, value="DELTA")
+    ws.cell(row=58, column=2, value="PROBABILITY OF WINNING")
+    ws.cell(row=69, column=2, value="NET CREDIT/(DEBIT)")
+    ws.cell(row=71, column=2, value="FINAL ARORC")
+
+    _set_block(
+        ws,
+        5,
+        "RBLX ROCT PUT",
+        {
+            "TRADE DATE": date(2026, 7, 22),
+            "UNDERLYING": "RBLX",
+            "PRICE": 50.16,
+            "DAYS TO EXPIRATION (DTE)": 9,
+            "EXPIRATION DATE": date(2026, 7, 31),
+            "DELTA": 0.05,
+            "PROBABILITY OF WINNING": 0.95,
+            "SHORT STRIKE": 36.00,
+            "CREDIT/(DEBIT)": 0.21,
+            "COMMISSION (Per share)": 0.00410,
+            "NET CREDIT (NC)": 0.2059,
+            "ANNUALIZED RORC (ARORC)": 0.233,
+            "ACTUAL CONTRACTS": 1,
+            "SHARES": 100,
+            "RESULT": "ROLL",
+            " RESULT DATE (Closed or Expired)": date(2026, 7, 31),
+            "CLOSING DEBIT": 0,
+            "TOTAL DEBIT": 0,
+        },
+    )
+    ws.cell(row=69, column=5, value=20.59)
+    ws.cell(row=71, column=5, value=0.233)
+
+    _set_block(
+        ws,
+        6,
+        '=F4&" ROCT PUT"',
+        {
+            "TRADE DATE": date(2026, 7, 31),
+            "UNDERLYING": "RBLX",
+            "PRICE": 50.16,
+            "DAYS TO EXPIRATION (DTE)": 7,
+            "EXPIRATION DATE": date(2026, 8, 7),
+            "DELTA": 0.05,
+            "PROBABILITY OF WINNING": 0.95,
+            "SHORT STRIKE": 34.50,
+            "CREDIT/(DEBIT)": 0.02,
+            "COMMISSION (Per share)": 0.00410,
+            "NET CREDIT (NC)": 0.0159,
+            "ANNUALIZED RORC (ARORC)": 0.024,
+            "ACTUAL CONTRACTS": 1,
+            "SHARES": 100,
+            "RESULT": "EXPIRED",
+            "CLOSING DEBIT": 0,
+            "TOTAL DEBIT": 0,
+        },
+    )
+    ws.cell(row=69, column=6, value=22.18)
+    ws.cell(row=71, column=6, value=0.335)
+
+    first, second = parse_trade_sheet(ws)
+
+    assert first.ticker == "RBLX"
+    assert first.trade_date == date(2026, 7, 22)
+    assert first.price_per_share == Decimal("50.16")
+    assert first.days_to_expiration == 9
+    assert first.expiration_date == date(2026, 7, 31)
+    assert first.delta == Decimal("0.05")
+    assert first.probability_of_winning == Decimal("0.95")
+    assert first.short_strike == Decimal("36")
+    assert first.credit_debit == Decimal("0.21")
+    assert first.event_type == "ROLL"
+    assert first.result_date == date(2026, 7, 31)
+    assert first.result_net_credit == Decimal("20.59")
+    assert first.final_arorc == Decimal("0.233")
+    assert first.arorc == Decimal("0.233")
+
+    assert second.ticker == "RBLX"
+    assert second.trade_date == date(2026, 7, 31)
+    assert second.days_to_expiration == 7
+    assert second.expiration_date == date(2026, 8, 7)
+    assert second.delta == Decimal("0.05")
+    assert second.probability_of_winning == Decimal("0.95")
+    assert second.short_strike == Decimal("34.5")
+    assert second.credit_debit == Decimal("0.02")
+    assert second.event_type == "EXPIRE"
+    assert second.result_date is None
+    assert second.result_net_credit == Decimal("22.18")
+    assert second.final_arorc == Decimal("0.335")
+    assert second.arorc == Decimal("0.024")

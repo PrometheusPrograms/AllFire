@@ -1,0 +1,37 @@
+{
+  "account": "Rule 1",
+  "ticker": "LULU",
+  "expected_shares": 900,
+  "notes": "TOS tax lots (qty + open date) are the remaining-inventory gate. Statement equity walk uses 742 PDF fill qty/price (trade/settle may differ by a few days). TOS cost/share on the 10-share lots is $4.19 above the statement fill — we match statement fills, not TOS marked-up basis. The 2026-06-01 −200 call-away is included in the walk so remaining shares stay 900. Option STO/EXPIRE diffs (roll credits vs original OKW premium, spread long legs not in OKW) are reported by reconcile_statements.py; they do not change the 900-share qty gate.",
+  "tos_lots": [
+    {"open_date": "2025-06-20", "shares": 10, "cost_per_share": "232.18"},
+    {"open_date": "2025-07-24", "shares": 10, "cost_per_share": "223.18"},
+    {"open_date": "2025-07-29", "shares": 10, "cost_per_share": "219.18"},
+    {"open_date": "2025-08-06", "shares": 10, "cost_per_share": "200.43"},
+    {"open_date": "2025-09-12", "shares": 10, "cost_per_share": "164.18"},
+    {"open_date": "2025-10-10", "shares": 50, "cost_per_share": "168.44"},
+    {"open_date": "2025-10-10", "shares": 50, "cost_per_share": "168.55"},
+    {"open_date": "2026-03-27", "shares": 50, "cost_per_share": "152.42"},
+    {"open_date": "2026-03-27", "shares": 150, "cost_per_share": "148.34"},
+    {"open_date": "2026-04-23", "shares": 100, "cost_per_share": "154.59"},
+    {"open_date": "2026-04-23", "shares": 50, "cost_per_share": "141.99"},
+    {"open_date": "2026-05-15", "shares": 200, "cost_per_share": "127.93"},
+    {"open_date": "2026-05-15", "shares": 200, "cost_per_share": "123.47"}
+  ],
+  "statement_equity_walk": [
+    {"date": "2025-06-23", "shares": 10, "price": "227.99", "kind": "bto"},
+    {"date": "2025-07-25", "shares": 10, "price": "218.99", "kind": "bto"},
+    {"date": "2025-07-30", "shares": 10, "price": "214.99", "kind": "bto"},
+    {"date": "2025-08-07", "shares": 10, "price": "196.24", "kind": "bto"},
+    {"date": "2025-09-15", "shares": 10, "price": "159.99", "kind": "bto"},
+    {"date": "2025-10-14", "shares": 100, "price": "165.00", "kind": "put_assign"},
+    {"date": "2026-03-30", "shares": 200, "price": "149.00", "kind": "put_assign"},
+    {"date": "2026-04-24", "shares": 50, "price": "141.99", "kind": "bto"},
+    {"date": "2026-04-24", "shares": 100, "price": "155.00", "kind": "put_assign"},
+    {"date": "2026-05-08", "shares": 100, "price": "133.10", "kind": "bto"},
+    {"date": "2026-05-08", "shares": 100, "price": "132.99", "kind": "bto"},
+    {"date": "2026-05-18", "shares": 200, "price": "130.00", "kind": "put_assign"},
+    {"date": "2026-05-18", "shares": 200, "price": "124.00", "kind": "put_assign"},
+    {"date": "2026-06-01", "shares": -200, "price": "126.00", "kind": "call_assign"}
+  ]
+}

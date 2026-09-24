@@ -10,12 +10,15 @@ feature/*  →  PR into staging  →  staging (Neon branch, Render preview, Verc
                               PR: staging → main  →  main / production
 ```
 
-- Feature branches never touch `main` directly — everything flows through `staging` first.
-- `staging` maps to its own Neon database branch (free, instant, copy-on-write from prod) —
-  so staging tests run against realistic data without touching anything real.
+- Feature branches never touch `main` directly — **code** flows through git `staging` first.
+- Neon `staging` is a copy-on-write child of Neon `production` (sibling of Neon `dev`).
+  Staging tests run against realistic data without touching production. Test trades on
+  `dev` stay on `dev` — do not dump/restore them into staging. Full data rules:
+  [ENVIRONMENTS.md](ENVIRONMENTS.md).
 - Promotion to `main` is a second, deliberate PR — not automatic. This is the actual
   answer to "staging before production": nothing reaches prod without a human looking at
-  how it behaved on staging first.
+  how it behaved on staging first. Alembic still runs **on that environment's database**;
+  merging git does not copy rows.
 
 ## 2. What runs on every PR (quality + security gate)
 

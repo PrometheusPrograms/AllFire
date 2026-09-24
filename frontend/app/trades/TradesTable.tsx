@@ -8,11 +8,11 @@ import {
 } from "@tanstack/react-table";
 import { useState } from "react";
 import type { Trade } from "@/lib/api-client";
+import FormattedDate from "./FormattedDate";
 import {
   DEFAULT_TRADE_TYPE_COLOR,
   DISPLAY_STATUS_BADGE_CLASS,
   DISPLAY_STATUS_LABEL,
-  formatDate,
   formatMoney,
   formatPercent,
   formatShareCount,
@@ -50,7 +50,7 @@ interface TradesTableMeta {
 const columns = [
   columnHelper.accessor("date_trade_open", {
     header: "Opened",
-    cell: (info) => formatDate(info.getValue()),
+    cell: (info) => <FormattedDate value={info.getValue()} />,
   }),
   columnHelper.accessor("ticker", {
     header: "Ticker",
@@ -69,6 +69,9 @@ const columns = [
           }}
         >
           {info.getValue()}
+          {trade.roll_legs > 1 ? (
+            <span className={styles.rollLegs}>{trade.roll_legs} legs</span>
+          ) : null}
         </button>
       );
     },
@@ -89,12 +92,19 @@ const columns = [
     },
   }),
   columnHelper.accessor(
-    (row) =>
-      row.long_strike
+    (row) => {
+      if (row.strike_path) {
+        return row.strike_path
+          .split(" → ")
+          .map((part) => formatMoney(part))
+          .join(" → ");
+      }
+      return row.long_strike
         ? `${formatMoney(row.strike_price)}/${formatMoney(row.long_strike)}`
         : row.strike_price
           ? formatMoney(row.strike_price)
-          : null,
+          : null;
+    },
     {
       id: "strike",
       header: "Strike(s)",
@@ -103,7 +113,7 @@ const columns = [
   ),
   columnHelper.accessor("expiration_date", {
     header: "Expiration",
-    cell: (info) => formatDate(info.getValue()),
+    cell: (info) => <FormattedDate value={info.getValue()} />,
   }),
   columnHelper.accessor((row) => tradeShareCount(row), {
     id: "size",
@@ -120,6 +130,7 @@ const columns = [
   }),
   columnHelper.accessor(
     (row) => {
+      if (row.premium_collected != null) return Number(row.premium_collected);
       if (row.trade_type_category !== "OPTIONS" || !row.is_credit) return null;
       if (row.net_credit_per_share === null || row.num_of_contracts === null) return null;
       return Number(row.net_credit_per_share) * row.num_of_contracts * 100;
@@ -133,7 +144,8 @@ const columns = [
       },
     }
   ),
-  columnHelper.accessor("arorc", {
+  columnHelper.accessor((row) => row.chain_arorc ?? row.arorc, {
+    id: "arorc",
     header: "ARORC",
     cell: (info) => formatPercent(info.getValue()),
   }),
@@ -141,6 +153,7 @@ const columns = [
     header: "Status",
     cell: (info) => {
       const status = info.getValue();
+      if (status == null) return "—";
       return (
         <span className={`${styles.badge} ${styles[DISPLAY_STATUS_BADGE_CLASS[status]]}`}>
           {DISPLAY_STATUS_LABEL[status]}

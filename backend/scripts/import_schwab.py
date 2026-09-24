@@ -54,6 +54,9 @@ def _print_result(result, *, dry_run: bool) -> None:
     print(f"{prefix}create BTO trades: {result.btos_created}")
     print(f"skipped BTO (already in DB): {result.btos_skipped_existing}")
     print(f"skipped BTO (matches ASSIGN lot): {result.btos_skipped_assign}")
+    print(f"{prefix}create STC trades: {result.stcs_created}")
+    print(f"skipped STC (already in DB): {result.stcs_skipped_existing}")
+    print(f"skipped STC (matches ASSIGN lot): {result.stcs_skipped_assign}")
     print(f"review (not imported): {len(result.review)}")
     for item in result.review:
         desc = f" {item.description}" if item.description else ""
@@ -107,6 +110,7 @@ def main(argv: list[str] | None = None) -> int:
             import_batch=import_batch,
             dividends=parsed.dividends,
             equity_buys=parsed.equity_buys,
+            equity_sells=parsed.equity_sells,
             review=parsed.review,
             dry_run=args.dry_run,
         )

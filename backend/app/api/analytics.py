@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Account, Trade, TradeType
+from app.models import Account, Trade, TradeEvent, TradeType
 from app.services.premium import (
     PremiumEntry,
     average_weekly_premium,
@@ -31,14 +31,24 @@ from app.services.premium import (
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
-# Mirrors app.api.trades._current_status / _display_status_expr — kept as a
-# separate, narrower query here since analytics only needs open vs. not,
-# not the full rolled/assigned/expired/closed breakdown.
+# Mirrors app.api.trades._display_status_expr: "Open trades" on the KPI
+# strip is the same set as the table's Open chip (latest event is not
+# ROLL/CLOSE/EXPIRE/ASSIGN, and not a plain stock fill). Live-but-rolled
+# options still feed needs-review / expiring-this-week via trade_status.
 _current_status = sa.table(
     "v_trade_current_status",
     sa.column("trade_id"),
     sa.column("trade_status"),
 )
+_latest_event_type = (
+    select(TradeEvent.event_type)
+    .where(TradeEvent.trade_id == Trade.id)
+    .order_by(TradeEvent.event_date.desc(), TradeEvent.id.desc())
+    .limit(1)
+    .correlate(Trade)
+    .scalar_subquery()
+)
+_CLOSED_OR_ROLLED_EVENTS = ("CLOSE", "EXPIRE", "ASSIGN", "ROLL")
 
 
 class UpcomingExpiration(BaseModel):
@@ -86,6 +96,7 @@ def _base_trade_query(account: str | None):
             TradeType.category.label("trade_type_category"),
             TradeType.is_credit,
             _current_status.c.trade_status,
+            _latest_event_type.label("latest_event_type"),
         )
         .select_from(Trade)
         .join(Account, Account.id == Trade.account_id)
@@ -101,15 +112,36 @@ def _base_trade_query(account: str | None):
 def get_summary(
     account: str | None = Query(None, description='Account name, e.g. "Rule 1".'),
     as_of: date | None = Query(None, description="Defaults to today."),
+    date_from: date | None = Query(
+        None, description="If set, open_trades_count only includes date_trade_open >= this."
+    ),
+    date_to: date | None = Query(
+        None, description="If set, open_trades_count only includes date_trade_open <= this."
+    ),
     db: Session = Depends(get_db),
 ) -> AnalyticsSummaryOut:
     as_of = as_of or date.today()
     rows = db.execute(_base_trade_query(account)).mappings().all()
 
-    open_rows = [r for r in rows if r["trade_status"] == "open"]
-    open_trades_count = len(open_rows)
+    live_option_rows = [
+        r
+        for r in rows
+        if r["trade_status"] == "open" and r["trade_type_category"] != "STOCK"
+    ]
+    # Same membership as GET /api/trades?display_status=open.
+    display_open_all = [
+        r
+        for r in live_option_rows
+        if r["latest_event_type"] not in _CLOSED_OR_ROLLED_EVENTS
+    ]
+    display_open_rows = display_open_all
+    if date_from is not None:
+        display_open_rows = [r for r in display_open_rows if r["date_trade_open"] >= date_from]
+    if date_to is not None:
+        display_open_rows = [r for r in display_open_rows if r["date_trade_open"] <= date_to]
+    open_trades_count = len(display_open_rows)
 
-    open_arorcs = [r["arorc"] for r in open_rows if r["arorc"] is not None]
+    open_arorcs = [r["arorc"] for r in display_open_rows if r["arorc"] is not None]
     avg_arorc_open = (
         sum(open_arorcs, start=Decimal("0")) / len(open_arorcs) if open_arorcs else None
     )
@@ -118,7 +150,7 @@ def get_summary(
     upcoming = sorted(
         (
             r
-            for r in open_rows
+            for r in display_open_all
             if r["expiration_date"] is not None and as_of <= r["expiration_date"] <= horizon
         ),
         key=lambda r: r["expiration_date"],
@@ -137,10 +169,14 @@ def get_summary(
     # option/contract has already expired — a data-quality signal (a CLOSE/
     # EXPIRE/ASSIGN event is probably missing), not the old unused
     # Trade.needs_review column.
+    # Rolled legs are continuations of another column — their expiration is
+    # no longer the live contract, so they are not a missing CLOSE/EXPIRE.
     needs_review_count = sum(
         1
-        for r in open_rows
-        if r["expiration_date"] is not None and r["expiration_date"] < as_of
+        for r in live_option_rows
+        if r["expiration_date"] is not None
+        and r["expiration_date"] < as_of
+        and r["latest_event_type"] != "ROLL"
     )
 
     premium_entries: list[PremiumEntry] = []

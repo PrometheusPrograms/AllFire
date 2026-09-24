@@ -139,7 +139,24 @@ def client():
             net_credit_per_share=Decimal("0.10"),
             commission_per_share=Decimal("0.0041"),
         )
-        seed.add_all([open_trade, closed_trade, stock_trade, stale_trade])
+        # Still live in v_trade_current_status, but the table's Open chip
+        # (display_status) treats ROLL as not open.
+        rolled_trade = Trade(
+            account_id=account.id,
+            ticker_id=ticker.id,
+            ticker="SLV",
+            trade_type_id=put_type.id,
+            trade_type="ROCT PUT",
+            date_trade_open=date(2025, 11, 1),
+            expiration_date=date(2026, 6, 1),
+            num_of_contracts=1,
+            strike_price=Decimal("50"),
+            credit_debit=Decimal("0.20"),
+            net_credit_per_share=Decimal("0.20"),
+            commission_per_share=Decimal("0.0041"),
+            arorc=Decimal("0.99"),
+        )
+        seed.add_all([open_trade, closed_trade, stock_trade, stale_trade, rolled_trade])
         seed.flush()
 
         seed.add(TradeEvent(trade_id=open_trade.id, event_type="OPEN", event_date=date(2026, 1, 1)))
@@ -155,6 +172,12 @@ def client():
         seed.add(
             TradeEvent(trade_id=stale_trade.id, event_type="OPEN", event_date=date(2025, 12, 1))
         )
+        seed.add(
+            TradeEvent(trade_id=rolled_trade.id, event_type="OPEN", event_date=date(2025, 11, 1))
+        )
+        seed.add(
+            TradeEvent(trade_id=rolled_trade.id, event_type="ROLL", event_date=date(2025, 11, 15))
+        )
         seed.commit()
 
         ids = {
@@ -162,6 +185,7 @@ def client():
             "closed": closed_trade.id,
             "stock": stock_trade.id,
             "stale": stale_trade.id,
+            "rolled": rolled_trade.id,
         }
 
     test_app = FastAPI()
@@ -185,9 +209,17 @@ def test_summary_open_trades_count(client):
     assert response.status_code == 200
     body = response.json()
 
-    # open put + stock trade + stale trade (none have CLOSE/EXPIRE/ASSIGN).
-    assert body["open_trades_count"] == 3
+    # open put + stale. BTO is stock; rolled is live but not display-open.
+    assert body["open_trades_count"] == 2
     assert Decimal(body["avg_arorc_open"]) == Decimal("0.40")
+
+
+def test_summary_open_trades_count_respects_open_date_range(client):
+    response = client.get(
+        "/api/analytics/summary",
+        params={"as_of": "2026-01-01", "date_from": "2026-01-01", "date_to": "2026-01-01"},
+    )
+    assert response.json()["open_trades_count"] == 1
 
 
 def test_summary_premium_this_week_excludes_stock_and_older_trades(client):

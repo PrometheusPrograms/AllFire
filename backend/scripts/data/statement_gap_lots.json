@@ -1,0 +1,68 @@
+[
+  {
+    "kind": "bto",
+    "account": "Roth",
+    "ticker": "TSLA",
+    "date": "2013-11-07",
+    "shares": 30,
+    "price": "140.2567",
+    "commission_per_share": "0",
+    "notes": "Acct 467 Roth reconstruction: original lot per 2014-01-31 TDA statement (30 sh purchased 2013-11-07, Schwab-reported cost $4,207.70). Pre-dates the Schwab API window.",
+    "import_batch": "acct467_roth_history"
+  },
+  {
+    "kind": "bto",
+    "account": "Roth",
+    "ticker": "TSLA",
+    "date": "2020-08-31",
+    "shares": 120,
+    "price": "0.0000",
+    "commission_per_share": "0",
+    "notes": "Acct 467: TSLA 5:1 stock split (Aug 2020). 30 -> 150 shares, no cost-basis change (zero-cost synthetic lot). Confirmed on 2020-08-31 TDA statement.",
+    "import_batch": "acct467_roth_history"
+  },
+  {
+    "kind": "bto",
+    "account": "Roth",
+    "ticker": "TSLA",
+    "date": "2022-08-25",
+    "shares": 300,
+    "price": "0.0000",
+    "commission_per_share": "0",
+    "notes": "Acct 467: TSLA 3:1 stock split (Aug 2022). 150 -> 450 shares, no cost-basis change (zero-cost synthetic lot). Confirmed on 2022-08-31 TDA statement. 2024-12-26 sale of 50 sh is already a Schwab STC.",
+    "import_batch": "acct467_roth_history"
+  },
+  {
+    "kind": "bto",
+    "account": "Roth",
+    "ticker": "CWT",
+    "date": "2014-02-25",
+    "shares": 30,
+    "price": "23.9467",
+    "commission_per_share": "0",
+    "notes": "Acct 467 Roth reconstruction: original lot per 2014-02-28 TDA statement (30 sh purchased 2014-02-25, cost $718.40 including commission). Pre-dates the Schwab API window. DRIP remains cash_flows / 0-share BTO; this row is the rounded original lot.",
+    "import_batch": "acct467_roth_history"
+  },
+  {
+    "kind": "bto",
+    "account": "Roth",
+    "ticker": "CWT",
+    "date": "2024-11-22",
+    "shares": 5,
+    "price": "49.6900",
+    "commission_per_share": "0",
+    "notes": "Acct 467: CWT DRIP catch-up to whole shares. Statement qty grew from 30 to 35.434 (cost $977.24) then a fractional sale left 35 sh @ $966.85 (2026-04-30). Five whole shares at $248.45 ($966.85 - $718.40) dated on the last in-window DRIP. 2026-05-14 sale of 35 sh is already a Schwab STC.",
+    "import_batch": "acct467_roth_history"
+  },
+  {
+    "kind": "bto",
+    "account": "Rule 1",
+    "ticker": "OXY",
+    "date": "2026-04-20",
+    "shares": 436,
+    "price": "53.9500",
+    "commission_per_share": "0",
+    "notes": "Rule 1 (742) 2026-04-30 statement: Purchase 500 OXY @ 53.95 on 2026-04-20. Schwab API only booked 64 sh at that price; this is the remaining 436 so EOM inventory matches 638 before the 2026-05-15 600-share call assignment.",
+    "import_batch": "oxy_stmt_catchup"
+  }
+]

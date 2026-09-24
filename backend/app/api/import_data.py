@@ -23,7 +23,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from scripts.import_historical import ACCOUNTS
+from scripts.import_historical import ACCOUNTS, _normalize_legacy_rut_spread_labels
 from scripts.okw_loader import ImportBatchExistsError, load_parsed_trades
 from scripts.okw_parser import ParsedTrade, parse_trade_sheet
 from scripts.xlsx_compat import load_workbook_safely
@@ -76,6 +76,7 @@ async def import_spreadsheet(
                 400, f"Sheet {sheet_name!r} not found. Available: {workbook.sheetnames}"
             )
         parsed_trades: list[ParsedTrade] = parse_trade_sheet(workbook[sheet_name])
+        _normalize_legacy_rut_spread_labels(parsed_trades)
     finally:
         tmp_path.unlink(missing_ok=True)
 

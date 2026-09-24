@@ -13,7 +13,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.api import positions
 from app.db import get_db
-from app.models import Account, Base, CostBasis, Ticker, Trade, TradeType
+from app.models import Account, Base, CashFlow, CostBasis, Ticker, Trade, TradeType
 
 
 @pytest.fixture
@@ -152,6 +152,16 @@ def client():
                 ),
             ]
         )
+        seed.add(
+            CashFlow(
+                account_id=account.id,
+                ticker_id=ticker.id,
+                transaction_date=date(2026, 3, 15),
+                transaction_type="DIVIDEND",
+                amount=Decimal("12.50"),
+                description="Qualified Dividend",
+            )
+        )
         seed.commit()
 
     test_app = FastAPI()
@@ -169,9 +179,7 @@ def client():
 
 
 def test_position_summary_splits_trading_and_long_term(client):
-    response = client.get(
-        "/api/positions/summary", params={"ticker": "adbe", "account": "Rule 1"}
-    )
+    response = client.get("/api/positions/summary", params={"ticker": "adbe", "account": "Rule 1"})
     assert response.status_code == 200
     body = response.json()
 
@@ -192,9 +200,7 @@ def test_position_summary_splits_trading_and_long_term(client):
 
 
 def test_position_summary_total_premium_includes_all_option_trades_any_status(client):
-    response = client.get(
-        "/api/positions/summary", params={"ticker": "ADBE", "account": "Rule 1"}
-    )
+    response = client.get("/api/positions/summary", params={"ticker": "ADBE", "account": "Rule 1"})
     body = response.json()
 
     # (2.00 + 3.00 + 1.50) * 1 contract * 100 = 650, including the still-open
@@ -203,9 +209,7 @@ def test_position_summary_total_premium_includes_all_option_trades_any_status(cl
 
 
 def test_position_summary_unknown_ticker_404s(client):
-    response = client.get(
-        "/api/positions/summary", params={"ticker": "ZZZZ", "account": "Rule 1"}
-    )
+    response = client.get("/api/positions/summary", params={"ticker": "ZZZZ", "account": "Rule 1"})
     assert response.status_code == 404
 
 
@@ -214,3 +218,32 @@ def test_position_summary_unknown_account_404s(client):
         "/api/positions/summary", params={"ticker": "ADBE", "account": "Nonexistent"}
     )
     assert response.status_code == 404
+
+
+def test_position_ledger_tags_option_bto_and_dividend(client):
+    response = client.get("/api/positions/ledger", params={"ticker": "ADBE", "account": "Rule 1"})
+    assert response.status_code == 200
+    items = response.json()["items"]
+    sources = {row["trade_type"]: row["source"] for row in items}
+    assert sources["ROCT PUT"] == "option"
+    assert sources["RULE ONE PUT"] == "option"
+    assert sources["BTO"] == "BTO"
+    assert sources["DIVIDEND"] == "dividend"
+
+    dividend = next(row for row in items if row["row_kind"] == "dividend")
+    assert Decimal(dividend["amount"]) == Decimal("12.50")
+    assert dividend["display_status"] == "paid"
+    assert dividend["shares"] is None
+
+    bto = next(row for row in items if row["trade_type"] == "BTO")
+    assert bto["row_kind"] == "trade"
+    assert bto["shares"] == 10
+    assert Decimal(bto["amount"]) == Decimal("3100.00")
+    # Status isn't a meaningful concept for a plain stock fill.
+    assert bto["display_status"] is None
+    # No strike on a stock trade — the trade price fills that column instead.
+    assert Decimal(bto["strike_price"]) == Decimal("310.00")
+
+    roct_row = next(row for row in items if row["trade_type"] == "ROCT PUT")
+    assert roct_row["display_status"] is not None
+    assert Decimal(roct_row["strike_price"]) == Decimal("290.00")

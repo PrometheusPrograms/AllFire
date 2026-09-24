@@ -10,7 +10,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.models import Account, Base, CashFlow, CostBasis, Ticker, Trade, TradeEvent, TradeType
 from scripts.schwab_loader import load_schwab
-from scripts.schwab_parser import CashDividend, EquityBuy
+from scripts.schwab_parser import CashDividend, EquityBuy, EquitySell
 
 
 @pytest.fixture
@@ -41,7 +41,25 @@ def session_factory():
         )
         seed.add(
             TradeType(
+                type_name="STC",
+                category="STOCK",
+                is_credit=True,
+                requires_shares=True,
+            )
+        )
+        seed.add(
+            TradeType(
                 type_name="ROCT PUT",
+                category="OPTIONS",
+                is_credit=True,
+                requires_expiration=True,
+                requires_strike=True,
+                requires_contracts=True,
+            )
+        )
+        seed.add(
+            TradeType(
+                type_name="ROCT CALL",
                 category="OPTIONS",
                 is_credit=True,
                 requires_expiration=True,
@@ -78,6 +96,21 @@ def _buy(**overrides) -> EquityBuy:
     )
     values.update(overrides)
     return EquityBuy(**values)
+
+
+def _sell(**overrides) -> EquitySell:
+    values = dict(
+        activity_id="2002",
+        order_id="88002",
+        transaction_date=date(2025, 4, 3),
+        ticker="AAPL",
+        shares=5,
+        price=Decimal("160"),
+        fees=Decimal("0"),
+        description="Sell AAPL",
+    )
+    values.update(overrides)
+    return EquitySell(**values)
 
 
 def test_inserts_dividend_and_bto_with_cost_basis(session_factory):
@@ -209,6 +242,234 @@ def test_skips_buy_that_matches_assign_lot(session_factory):
     assert result.btos_skipped_assign == 1
 
 
+def test_skips_buy_matching_assign_on_settlement_date(session_factory):
+    with session_factory() as session:
+        account = session.scalar(select(Account))
+        put_type = session.scalar(select(TradeType).where(TradeType.type_name == "ROCT PUT"))
+        ticker = Ticker(ticker="AAPL")
+        session.add(ticker)
+        session.flush()
+        trade = Trade(
+            account_id=account.id,
+            ticker_id=ticker.id,
+            ticker="AAPL",
+            trade_type_id=put_type.id,
+            trade_type="ROCT PUT",
+            date_trade_open=date(2025, 3, 1),
+            expiration_date=date(2025, 4, 11),
+            num_of_contracts=1,
+            strike_price=Decimal("150"),
+            credit_debit=Decimal("1.00"),
+            commission_per_share=Decimal("0"),
+        )
+        session.add(trade)
+        session.flush()
+        session.add(
+            TradeEvent(
+                trade_id=trade.id,
+                event_type="ASSIGN",
+                event_date=date(2025, 4, 11),
+            )
+        )
+        session.commit()
+
+    with session_factory() as session:
+        result = load_schwab(
+            session,
+            account_name="Rule 1",
+            import_batch="schwab_rule1_div_bto",
+            dividends=[],
+            equity_buys=[
+                _buy(
+                    activity_id="2005",
+                    order_id=None,
+                    transaction_date=date(2025, 4, 18),
+                    shares=100,
+                    price=Decimal("150"),
+                    fees=Decimal("0"),
+                )
+            ],
+        )
+        session.commit()
+
+    assert result.btos_created == 0
+    assert result.btos_skipped_assign == 1
+
+
+def test_skips_sell_that_matches_call_assign_lot(session_factory):
+    with session_factory() as session:
+        account = session.scalar(select(Account))
+        call_type = session.scalar(select(TradeType).where(TradeType.type_name == "ROCT CALL"))
+        ticker = Ticker(ticker="AAPL")
+        session.add(ticker)
+        session.flush()
+        trade = Trade(
+            account_id=account.id,
+            ticker_id=ticker.id,
+            ticker="AAPL",
+            trade_type_id=call_type.id,
+            trade_type="ROCT CALL",
+            date_trade_open=date(2025, 3, 1),
+            expiration_date=date(2025, 4, 11),
+            num_of_contracts=2,
+            strike_price=Decimal("160"),
+            credit_debit=Decimal("1.00"),
+            commission_per_share=Decimal("0"),
+        )
+        session.add(trade)
+        session.flush()
+        session.add(
+            TradeEvent(
+                trade_id=trade.id,
+                event_type="ASSIGN",
+                event_date=date(2025, 4, 11),
+            )
+        )
+        session.commit()
+
+    with session_factory() as session:
+        result = load_schwab(
+            session,
+            account_name="Rule 1",
+            import_batch="schwab_rule1_div_bto",
+            dividends=[],
+            equity_buys=[],
+            equity_sells=[
+                _sell(
+                    activity_id="2006",
+                    order_id=None,
+                    transaction_date=date(2025, 4, 16),
+                    shares=200,
+                    price=Decimal("160"),
+                    fees=Decimal("0"),
+                )
+            ],
+        )
+        session.commit()
+
+    assert result.stcs_created == 0
+    assert result.stcs_skipped_assign == 1
+
+
+def test_skips_sell_that_bundles_assignment_plus_odd_lot(session_factory):
+    with session_factory() as session:
+        account = session.scalar(select(Account))
+        call_type = session.scalar(select(TradeType).where(TradeType.type_name == "ROCT CALL"))
+        ticker = Ticker(ticker="SLV")
+        session.add(ticker)
+        session.flush()
+        trade = Trade(
+            account_id=account.id,
+            ticker_id=ticker.id,
+            ticker="SLV",
+            trade_type_id=call_type.id,
+            trade_type="ROCT CALL",
+            date_trade_open=date(2025, 1, 2),
+            expiration_date=date(2025, 1, 6),
+            num_of_contracts=4,
+            strike_price=Decimal("27.50"),
+            credit_debit=Decimal("0.20"),
+            commission_per_share=Decimal("0"),
+        )
+        session.add(trade)
+        session.flush()
+        session.add(
+            TradeEvent(trade_id=trade.id, event_type="ASSIGN", event_date=date(2025, 1, 6))
+        )
+        session.commit()
+
+    with session_factory() as session:
+        result = load_schwab(
+            session,
+            account_name="Rule 1",
+            import_batch="schwab_rule1_div_bto",
+            dividends=[],
+            equity_buys=[],
+            equity_sells=[
+                _sell(
+                    activity_id="2007",
+                    order_id=None,
+                    transaction_date=date(2025, 1, 13),
+                    ticker="SLV",
+                    shares=500,
+                    price=Decimal("27.50"),
+                    fees=Decimal("0"),
+                )
+            ],
+        )
+        session.commit()
+
+    assert result.stcs_created == 0
+    assert result.stcs_skipped_assign == 1
+
+
+def test_cleanup_deletes_schwab_stc_matching_assign(session_factory):
+    from scripts.schwab_loader import delete_schwab_rows_matching_assign
+
+    with session_factory() as session:
+        account = session.scalar(select(Account))
+        call_type = session.scalar(select(TradeType).where(TradeType.type_name == "ROCT CALL"))
+        stc_type = session.scalar(select(TradeType).where(TradeType.type_name == "STC"))
+        ticker = Ticker(ticker="TSLA")
+        session.add(ticker)
+        session.flush()
+        option = Trade(
+            account_id=account.id,
+            ticker_id=ticker.id,
+            ticker="TSLA",
+            trade_type_id=call_type.id,
+            trade_type="ROCT CALL",
+            date_trade_open=date(2026, 5, 20),
+            expiration_date=date(2026, 5, 28),
+            num_of_contracts=1,
+            strike_price=Decimal("435"),
+            credit_debit=Decimal("1.70"),
+            commission_per_share=Decimal("0"),
+            import_batch="rule1_2026",
+        )
+        session.add(option)
+        session.flush()
+        session.add(
+            TradeEvent(trade_id=option.id, event_type="ASSIGN", event_date=date(2026, 5, 28))
+        )
+        stc = Trade(
+            account_id=account.id,
+            ticker_id=ticker.id,
+            ticker="TSLA",
+            trade_type_id=stc_type.id,
+            trade_type="STC",
+            date_trade_open=date(2026, 6, 1),
+            num_of_shares=100,
+            price_per_share=Decimal("435"),
+            credit_debit=Decimal("435"),
+            commission_per_share=Decimal("0"),
+            import_batch="schwab_rule1_div_bto",
+        )
+        session.add(stc)
+        session.flush()
+        session.add(TradeEvent(trade_id=stc.id, event_type="OPEN", event_date=date(2026, 6, 1)))
+        session.add(
+            CostBasis(
+                account_id=account.id,
+                ticker_id=ticker.id,
+                trade_id=stc.id,
+                transaction_date=date(2026, 6, 1),
+                shares=-100,
+                cost_per_share=Decimal("435"),
+                total_amount=Decimal("-43500"),
+            )
+        )
+        session.commit()
+        stc_id = stc.id
+
+    with session_factory() as session:
+        deleted = delete_schwab_rows_matching_assign(session)
+        session.commit()
+        assert deleted == [stc_id]
+        assert session.scalar(select(Trade).where(Trade.id == stc_id)) is None
+        assert session.scalar(select(CostBasis).where(CostBasis.trade_id == stc_id)) is None
+
+
 def test_skips_buy_matching_existing_bto_without_schwab_id(session_factory):
     with session_factory() as session:
         account = session.scalar(select(Account))
@@ -263,3 +524,61 @@ def test_dry_run_does_not_write(session_factory):
     with session_factory() as session:
         assert session.scalars(select(CashFlow)).first() is None
         assert session.scalars(select(Trade)).first() is None
+
+
+def test_inserts_stc_with_negative_cost_basis(session_factory):
+    with session_factory() as session:
+        result = load_schwab(
+            session,
+            account_name="Rule 1",
+            import_batch="schwab_rule1_div_bto",
+            dividends=[],
+            equity_buys=[],
+            equity_sells=[_sell()],
+        )
+        session.commit()
+
+    assert result.stcs_created == 1
+
+    with session_factory() as session:
+        trade = session.scalar(select(Trade).where(Trade.trade_type == "STC"))
+        assert trade is not None
+        assert trade.num_of_shares == 5
+        assert trade.price_per_share == Decimal("160")
+        assert trade.schwab_activity_id == "2002"
+        event = session.scalar(select(TradeEvent).where(TradeEvent.trade_id == trade.id))
+        assert event is not None
+        assert event.event_type == "OPEN"
+        basis = session.scalar(select(CostBasis).where(CostBasis.trade_id == trade.id))
+        assert basis is not None
+        assert basis.shares == -5
+        assert basis.total_amount == Decimal("-800")
+
+
+def test_rerun_is_idempotent_for_stc(session_factory):
+    with session_factory() as session:
+        load_schwab(
+            session,
+            account_name="Rule 1",
+            import_batch="schwab_rule1_div_bto",
+            dividends=[],
+            equity_buys=[],
+            equity_sells=[_sell()],
+        )
+        session.commit()
+
+    with session_factory() as session:
+        result = load_schwab(
+            session,
+            account_name="Rule 1",
+            import_batch="schwab_rule1_div_bto",
+            dividends=[],
+            equity_buys=[],
+            equity_sells=[_sell()],
+        )
+        session.commit()
+
+    assert result.stcs_created == 0
+    assert result.stcs_skipped_existing == 1
+    with session_factory() as session:
+        assert len(session.scalars(select(Trade)).all()) == 1

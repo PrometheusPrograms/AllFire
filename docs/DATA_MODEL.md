@@ -96,8 +96,8 @@ CREATE TABLE trades (
     days_to_expiration                 INTEGER,
     num_of_contracts                    INTEGER,
     num_of_shares                        INTEGER,
-    strike_price                          NUMERIC(12,4),
-    long_strike                            NUMERIC(12,4),
+    strike_price                          NUMERIC(12,2),
+    long_strike                            NUMERIC(12,2),
     price_per_share                          NUMERIC(12,4),
     current_price                             NUMERIC(12,4),
     credit_debit                               NUMERIC(12,4) NOT NULL,
@@ -109,6 +109,10 @@ CREATE TABLE trades (
     net_credit_per_share                               NUMERIC(12,6),
     risk_capital_per_share                              NUMERIC(12,4),
     arorc                                                NUMERIC(10,6),
+    delta                                                NUMERIC(8,4),
+    probability_of_winning                               NUMERIC(8,6),  -- OKW Prob OTM
+    final_arorc                                          NUMERIC(10,6),  -- OKW FINAL ARORC (result block)
+    result_net_credit                                    NUMERIC(14,2),  -- OKW NET CREDIT/(DEBIT) dollars
     schwab_order_id                                        TEXT,
     schwab_activity_id                                     TEXT UNIQUE,  -- Schwab CLI; stable when order id is missing
     notes                                                   TEXT,

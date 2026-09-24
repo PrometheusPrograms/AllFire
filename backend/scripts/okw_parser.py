@@ -20,7 +20,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+
+import re
 
 from openpyxl.worksheet.worksheet import Worksheet
 
@@ -43,13 +45,23 @@ LABELS = {
     "margin_percent": "MARGIN %",
     "margin_capital": "MARGIN CAPITAL",
     "arorc": "ANNUALIZED RORC (ARORC)",
+    "probability_of_winning": "PROBABILITY OF WINNING",
+    "delta": "DELTA",
     "contracts": "ACTUAL CONTRACTS",
     "shares": "SHARES",
     "result": "RESULT",
     "result_date": "RESULT DATE (CLOSED OR EXPIRED)",
     "closing_debit": "CLOSING DEBIT",
     "total_debit": "TOTAL DEBIT",
+    "result_net_credit": "NET CREDIT/(DEBIT)",
+    "final_arorc": "FINAL ARORC",
     "notes": "NOTES",
+}
+
+# Extra column-B spellings that map onto LABELS keys (UI rename / older files).
+LABEL_ALIASES = {
+    "PROB OTM": "probability_of_winning",
+    "PROBABILITY OF WINNING (PROB OTM)": "probability_of_winning",
 }
 
 # RESULT cell text -> trade_events.event_type. Anything not in this map
@@ -101,12 +113,16 @@ class ParsedTrade:
     margin_percent: Decimal | None
     margin_capital: Decimal | None
     arorc: Decimal | None
+    delta: Decimal | None
+    probability_of_winning: Decimal | None
     num_of_contracts: int | None
     num_of_shares: int | None
     result_raw: str | None
     result_date: date | None
     closing_debit: Decimal | None
     total_debit: Decimal | None
+    result_net_credit: Decimal | None
+    final_arorc: Decimal | None
     notes: str | None
     warnings: list[str] = field(default_factory=list)
 
@@ -128,6 +144,13 @@ class ParsedTrade:
 def _to_decimal(value: object) -> Decimal | None:
     if value is None or value == "":
         return None
+    if isinstance(value, str) and value.strip().startswith("="):
+        return None
+    if isinstance(value, str) and value.strip().endswith("%"):
+        try:
+            return Decimal(value.strip()[:-1].strip()) / Decimal("100")
+        except (InvalidOperation, ValueError):
+            return None
     if isinstance(value, str) and not value.strip().replace(".", "").replace(
         "-", ""
     ).isdigit():
@@ -136,9 +159,44 @@ def _to_decimal(value: object) -> Decimal | None:
         # not a number to carry into a NUMERIC column.
         return None
     try:
+        if isinstance(value, float):
+            return Decimal(str(round(value, 12)))
         return Decimal(str(value))
     except (InvalidOperation, ValueError):
         return None
+
+
+def _quantize(value: Decimal | None, quantum: Decimal) -> Decimal | None:
+    if value is None:
+        return None
+    return value.quantize(quantum, rounding=ROUND_HALF_UP)
+
+
+_HEADER_TYPE_RE = re.compile(r'"\s*([^"]+)"\s*$')
+
+
+def _header_ticker_and_type(header_value: object, underlying: str) -> tuple[str, str]:
+    """Row-1 is often a formula (`=E4&" ROCT PUT"`). Prefer the cached
+    `SLV ROCT PUT` text; if we only have the formula, take the ticker from
+    UNDERLYING and the type from the quoted suffix.
+    """
+    header_text = str(header_value).strip() if header_value not in (None, "") else ""
+    if header_text.startswith("="):
+        ticker = underlying.split()[0].strip() if underlying else ""
+        match = _HEADER_TYPE_RE.search(header_text)
+        trade_type_name = match.group(1).strip() if match else ""
+        return ticker, trade_type_name
+    parts = header_text.split(" ", 1)
+    ticker = parts[0].strip()
+    trade_type_name = parts[1].strip() if len(parts) > 1 else ""
+    return ticker, trade_type_name
+
+
+def _prob_otm_from_delta(delta: Decimal | None) -> Decimal | None:
+    """OKW `PROBABILITY OF WINNING` is `IF(delta=0,"-",1-delta)` (Prob OTM)."""
+    if delta is None or delta == 0:
+        return None
+    return (Decimal("1") - delta).quantize(Decimal("0.000001"))
 
 
 def _to_int(value: object) -> int | None:
@@ -156,17 +214,14 @@ def _to_date(value: object) -> date | None:
     return None
 
 
-def _build_label_row_map(ws: Worksheet) -> dict[str, int]:
+def _build_label_row_map(ws: Worksheet) -> dict[str, list[int]]:
     """Scan column B for each row's label, keyed by our normalized field
-    names (`LABELS` above). Scanning per-sheet (rather than hardcoding row
-    numbers) means a future sheet with shifted rows still parses correctly.
-
-    Uses `enumerate`/plain indices rather than `cell.row`/`cell.column`,
-    since read-only worksheets return lightweight `EmptyCell` placeholders
-    for blank cells that don't carry those attributes.
+    names (`LABELS` above). DELTA / PROBABILITY OF WINNING appear twice
+    (entry block and FINAL TRADE REVIEW); callers take the first numeric.
     """
     wanted = {_normalize_label(v): k for k, v in LABELS.items()}
-    found: dict[str, int] = {}
+    wanted.update({_normalize_label(alias): key for alias, key in LABEL_ALIASES.items()})
+    found: dict[str, list[int]] = {}
     for row_num, row_cells in enumerate(
         ws.iter_rows(min_col=2, max_col=2, max_row=200), start=1
     ):
@@ -174,8 +229,8 @@ def _build_label_row_map(ws: Worksheet) -> dict[str, int]:
         if value is None or not isinstance(value, str):
             continue
         key = wanted.get(_normalize_label(value))
-        if key and key not in found:
-            found[key] = row_num
+        if key:
+            found.setdefault(key, []).append(row_num)
     return found
 
 
@@ -204,30 +259,33 @@ def parse_trade_sheet(ws: Worksheet) -> list[ParsedTrade]:
         )
 
     def get(col: int, key: str) -> object:
-        row = label_rows.get(key)
-        if row is None:
+        rows = label_rows.get(key) or []
+        if not rows:
             return None
-        return ws.cell(row=row, column=col).value
+        return ws.cell(row=rows[0], column=col).value
+
+    def get_numeric(col: int, key: str) -> Decimal | None:
+        for row in label_rows.get(key) or []:
+            parsed = _to_decimal(ws.cell(row=row, column=col).value)
+            if parsed is not None:
+                return parsed
+        return None
 
     trades: list[ParsedTrade] = []
     for col in _find_block_columns(ws):
         header_cell = ws.cell(row=1, column=col)
-        header_text = str(header_cell.value).strip()
-
-        # Ticker/type come from the row-1 header ("SLV ROCT PUT" -> "SLV" +
-        # "ROCT PUT"), per how this workbook is actually filled in. The
-        # UNDERLYING row (row 4) is only a cross-check, not the source of
-        # truth — it's been observed to contain extra typed-in text (e.g.
-        # "CMG ROCS" instead of "CMG") on some spread trades.
-        header_parts = header_text.split(" ", 1)
-        ticker = header_parts[0].strip()
-        trade_type_name = header_parts[1].strip() if len(header_parts) > 1 else ""
+        underlying = str(get(col, "underlying") or "").strip()
+        ticker, trade_type_name = _header_ticker_and_type(header_cell.value, underlying)
 
         warnings: list[str] = []
         if not ticker:
             warnings.append(f"No header text found for column {header_cell.coordinate}")
-        underlying = str(get(col, "underlying") or "").strip()
-        if underlying and not underlying.upper().startswith(ticker.upper()):
+        if (
+            underlying
+            and ticker
+            and not str(header_cell.value or "").strip().startswith("=")
+            and not underlying.upper().startswith(ticker.upper())
+        ):
             warnings.append(
                 f"UNDERLYING ({underlying!r}) doesn't match header ticker ({ticker!r})"
             )
@@ -263,12 +321,23 @@ def parse_trade_sheet(ws: Worksheet) -> list[ParsedTrade]:
                 margin_percent=_to_decimal(get(col, "margin_percent")),
                 margin_capital=_to_decimal(get(col, "margin_capital")),
                 arorc=_to_decimal(get(col, "arorc")),
+                delta=get_numeric(col, "delta"),
+                probability_of_winning=(
+                    get_numeric(col, "probability_of_winning")
+                    or _prob_otm_from_delta(get_numeric(col, "delta"))
+                ),
                 num_of_contracts=_to_int(get(col, "contracts")),
                 num_of_shares=_to_int(get(col, "shares")),
                 result_raw=result_text,
                 result_date=_to_date(get(col, "result_date")),
                 closing_debit=_to_decimal(get(col, "closing_debit")),
                 total_debit=_to_decimal(get(col, "total_debit")),
+                result_net_credit=_quantize(
+                    get_numeric(col, "result_net_credit"), Decimal("0.01")
+                ),
+                final_arorc=_quantize(
+                    get_numeric(col, "final_arorc"), Decimal("0.000001")
+                ),
                 notes=(str(n) if (n := get(col, "notes")) not in (None, "") else None),
                 warnings=warnings,
             )

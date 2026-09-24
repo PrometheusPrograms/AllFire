@@ -1,24 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  getPositionLedger,
   getPositionSummary,
-  listTrades,
+  type PositionLedgerRow,
   type PositionSummary,
-  type Trade,
 } from "@/lib/api-client";
+import FormattedDate from "./FormattedDate";
 import {
   DEFAULT_TRADE_TYPE_COLOR,
   DISPLAY_STATUS_BADGE_CLASS,
   DISPLAY_STATUS_LABEL,
-  formatDate,
   formatMoney,
   formatShareCount,
-  tradeAmount,
-  tradeShareCount,
+  LEDGER_SOURCE_LABEL,
   TRADE_TYPE_COLOR,
 } from "./format";
 import styles from "./trades.module.css";
-
-const ALL_TRADES_LIMIT = 2000;
 
 type ShareClass = "trading" | "long_term";
 type NotionalKind = "SHARES" | "SELL_PUT" | "SELL_CALL";
@@ -49,6 +46,11 @@ function todayIso(): string {
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
   return `${now.getFullYear()}-${month}-${day}`;
+}
+
+function notionalSource(trade: NotionalTrade): string {
+  if (trade.kind === "SHARES") return trade.quantity < 0 ? "STC" : "BTO";
+  return "option";
 }
 
 function notionalTableType(trade: NotionalTrade): string {
@@ -83,6 +85,28 @@ function notionalShareDisplay(trade: NotionalTrade): number {
   const absQty = Math.abs(trade.quantity);
   if (!trade.assigned) return absQty;
   return trade.kind === "SELL_CALL" ? -absQty : absQty;
+}
+
+// Trade types that can actually be assigned (see AGENTS.md / backend
+// backfill_cost_basis.py). Spreads are deliberately excluded — they never
+// assign; a closed ROCS spread converts into a sibling PUT first.
+const PUT_LIKE_TYPES = new Set(["ROCT PUT", "RULE ONE PUT"]);
+const CALL_LIKE_TYPES = new Set(["ROCT CALL", "RULE ONE CALL"]);
+const ASSIGNABLE_OPTION_TYPES = new Set([...PUT_LIKE_TYPES, ...CALL_LIKE_TYPES]);
+
+function isAssignableOpenRow(row: PositionLedgerRow): boolean {
+  return (
+    row.row_kind === "trade" &&
+    row.display_status === "open" &&
+    ASSIGNABLE_OPTION_TYPES.has(row.trade_type)
+  );
+}
+
+// Same trading-vs-long-term split as app/services/position.py's
+// classify_share_class: ROCT/ROCS -> trading, everything else -> long_term.
+function shareClassForTradeType(tradeType: string): ShareClass {
+  const upper = tradeType.toUpperCase();
+  return upper.startsWith("ROCT") || upper.startsWith("ROCS") ? "trading" : "long_term";
 }
 
 interface DisplayTotals {
@@ -142,6 +166,29 @@ function applyNotional(totals: DisplayTotals, trade: NotionalTrade): DisplayTota
   return next;
 }
 
+/** Same math as backend/scripts/backfill_cost_basis.py's ASSIGN handling:
+ * a put acquires `contracts * 100` shares at strike, a call gives up that
+ * many. Premium is not touched — the position summary already counts it
+ * for every trade regardless of assignment status, so adding it again here
+ * would double-count. */
+function applyRealAssignmentSim(totals: DisplayTotals, row: PositionLedgerRow): DisplayTotals {
+  const shares = Math.abs(row.shares ?? 0);
+  const strike = row.strike_price !== null ? Number(row.strike_price) : 0;
+  const shareDelta = PUT_LIKE_TYPES.has(row.trade_type) ? shares : -shares;
+  const costDelta = shareDelta * strike;
+
+  const next = { ...totals };
+  next.totalShares += shareDelta;
+  next.costBasis += costDelta;
+  if (shareClassForTradeType(row.trade_type) === "trading") next.tradingShares += shareDelta;
+  else next.longTermShares += shareDelta;
+
+  next.avgCostPerShare = next.totalShares !== 0 ? next.costBasis / next.totalShares : null;
+  next.costBasisPerShare =
+    next.totalShares !== 0 ? (next.costBasis - next.premium) / next.totalShares : null;
+  return next;
+}
+
 export default function TickerDrawer({
   ticker,
   accountName,
@@ -154,10 +201,11 @@ export default function TickerDrawer({
   onSelectTrade: (id: number) => void;
 }) {
   const [summary, setSummary] = useState<PositionSummary | null>(null);
-  const [trades, setTrades] = useState<Trade[]>([]);
+  const [ledger, setLedger] = useState<PositionLedgerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notionals, setNotionals] = useState<NotionalTrade[]>([]);
+  const [simAssignedIds, setSimAssignedIds] = useState<Set<number>>(new Set());
   const [kind, setKind] = useState<NotionalKind>("SHARES");
   const [quantity, setQuantity] = useState("100");
   const [price, setPrice] = useState("");
@@ -168,17 +216,18 @@ export default function TickerDrawer({
     setLoading(true);
     setError(null);
     setSummary(null);
-    setTrades([]);
+    setLedger([]);
     setNotionals([]);
+    setSimAssignedIds(new Set());
 
     Promise.all([
       getPositionSummary({ ticker, account: accountName }),
-      listTrades({ ticker, account: accountName, limit: ALL_TRADES_LIMIT }),
+      getPositionLedger({ ticker, account: accountName }),
     ])
-      .then(([summaryData, tradesData]) => {
+      .then(([summaryData, ledgerData]) => {
         if (cancelled) return;
         setSummary(summaryData);
-        setTrades(tradesData.items);
+        setLedger(ledgerData.items);
       })
       .catch((err) => {
         if (!cancelled) {
@@ -194,12 +243,36 @@ export default function TickerDrawer({
     };
   }, [ticker, accountName]);
 
+  const simAssignedRows = useMemo(
+    () => ledger.filter((row) => isAssignableOpenRow(row) && simAssignedIds.has(row.id)),
+    [ledger, simAssignedIds]
+  );
+
   const displayed = useMemo(() => {
     if (!summary) return null;
-    return notionals.reduce(applyNotional, totalsFromSummary(summary));
-  }, [summary, notionals]);
+    const withRealAssignments = simAssignedRows.reduce(
+      applyRealAssignmentSim,
+      totalsFromSummary(summary)
+    );
+    return notionals.reduce(applyNotional, withRealAssignments);
+  }, [summary, notionals, simAssignedRows]);
 
+  const hasSimulation = notionals.length > 0 || simAssignedIds.size > 0;
   const soldOption = isSoldOption(kind);
+
+  function toggleSimAssign(id: number) {
+    setSimAssignedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function resetSimulations() {
+    setNotionals([]);
+    setSimAssignedIds(new Set());
+  }
 
   function addNotional() {
     const qty = Number(quantity);
@@ -240,8 +313,20 @@ export default function TickerDrawer({
           <div>
             <div className={styles.drawerTitle}>{ticker}</div>
             <div className={styles.drawerSubtitle}>
-              {accountName} · Lifetime position — all trades, any status
-              {notionals.length > 0 ? " · includes simulation" : ""}
+              {accountName} · Lifetime position — trades and dividends
+              {hasSimulation ? " · includes simulation" : ""}
+              {hasSimulation && (
+                <>
+                  {" · "}
+                  <button
+                    type="button"
+                    className={styles.clearButton}
+                    onClick={resetSimulations}
+                  >
+                    Reset simulation
+                  </button>
+                </>
+              )}
             </div>
           </div>
           <button type="button" className={styles.closeButton} onClick={onClose}>
@@ -368,13 +453,14 @@ export default function TickerDrawer({
             </div>
 
             <div className={styles.sectionTitle}>
-              All {ticker} trades ({trades.length + notionals.length})
+              All {ticker} activity ({ledger.length + notionals.length})
             </div>
             <div className={styles.tableWrap}>
               <table className={styles.table}>
                 <thead>
                   <tr>
                     <th>Opened</th>
+                    <th>Source</th>
                     <th>Type</th>
                     <th className={styles.numeric}>Strike(s)</th>
                     <th>Expiration</th>
@@ -386,7 +472,10 @@ export default function TickerDrawer({
                 <tbody>
                   {[...notionals].reverse().map((trade) => (
                     <tr key={trade.id} className={styles.simRow}>
-                      <td>{formatDate(trade.openedDate)}</td>
+                      <td>
+                        <FormattedDate value={trade.openedDate} />
+                      </td>
+                      <td>{LEDGER_SOURCE_LABEL[notionalSource(trade)]}</td>
                       <td>
                         <span className={styles.typeCell}>
                           <span
@@ -440,50 +529,86 @@ export default function TickerDrawer({
                       </td>
                     </tr>
                   ))}
-                  {trades.map((trade) => (
-                    <tr key={trade.id} onClick={() => onSelectTrade(trade.id)}>
-                      <td>{formatDate(trade.date_trade_open)}</td>
+                  {ledger.map((row) => {
+                    const assignable = isAssignableOpenRow(row);
+                    const simAssigned = assignable && simAssignedIds.has(row.id);
+                    return (
+                    <tr
+                      key={`${row.row_kind}-${row.id}`}
+                      className={simAssigned ? styles.simAssignedRow : undefined}
+                      onClick={
+                        row.row_kind === "trade" ? () => onSelectTrade(row.id) : undefined
+                      }
+                    >
+                      <td>
+                        <FormattedDate value={row.date} />
+                      </td>
+                      <td>{LEDGER_SOURCE_LABEL[row.source]}</td>
                       <td>
                         <span className={styles.typeCell}>
                           <span
                             className={styles.typeDot}
                             style={{
                               backgroundColor:
-                                TRADE_TYPE_COLOR[trade.trade_type] ?? DEFAULT_TRADE_TYPE_COLOR,
+                                TRADE_TYPE_COLOR[row.trade_type] ?? DEFAULT_TRADE_TYPE_COLOR,
                             }}
                           />
-                          {trade.trade_type}
+                          {row.trade_type}
                         </span>
                       </td>
                       <td className={styles.numeric}>
-                        {trade.long_strike
-                          ? `${formatMoney(trade.strike_price)}/${formatMoney(trade.long_strike)}`
-                          : trade.strike_price
-                            ? formatMoney(trade.strike_price)
+                        {row.long_strike
+                          ? `${formatMoney(row.strike_price)}/${formatMoney(row.long_strike)}`
+                          : row.strike_price
+                            ? formatMoney(row.strike_price)
                             : "—"}
                       </td>
-                      <td>{formatDate(trade.expiration_date)}</td>
-                      <td className={styles.numeric}>
-                        {formatShareCount(tradeShareCount(trade))}
+                      <td>
+                        <FormattedDate value={row.expiration_date} />
                       </td>
                       <td className={styles.numeric}>
-                        {tradeAmount(trade) === null
-                          ? "—"
-                          : formatMoney(String(tradeAmount(trade)))}
+                        {row.shares == null ? "—" : formatShareCount(row.shares)}
+                      </td>
+                      <td className={styles.numeric}>
+                        {row.amount == null ? "—" : formatMoney(row.amount)}
                       </td>
                       <td>
-                        <span
-                          className={`${styles.badge} ${styles[DISPLAY_STATUS_BADGE_CLASS[trade.display_status]]}`}
-                        >
-                          {DISPLAY_STATUS_LABEL[trade.display_status]}
+                        {row.display_status === null ? (
+                          "—"
+                        ) : (
+                        <span className={styles.statusWithAction}>
+                          <span
+                            className={`${styles.badge} ${styles[DISPLAY_STATUS_BADGE_CLASS[row.display_status] ?? "badgeOpen"]}`}
+                          >
+                            {DISPLAY_STATUS_LABEL[row.display_status] ?? row.display_status}
+                          </span>
+                          {assignable && (
+                            <button
+                              type="button"
+                              className={`${styles.simAssignToggle} ${simAssigned ? styles.simAssignToggleActive : ""}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleSimAssign(row.id);
+                              }}
+                              title={
+                                simAssigned
+                                  ? "Undo simulated assignment"
+                                  : `Simulate assignment: ${PUT_LIKE_TYPES.has(row.trade_type) ? "acquire" : "give up"} ${Math.abs(row.shares ?? 0)} sh @ ${row.strike_price ?? "?"}`
+                              }
+                            >
+                              {simAssigned ? "Simulated ✕" : "Simulate assignment"}
+                            </button>
+                          )}
                         </span>
+                        )}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
-              {trades.length === 0 && notionals.length === 0 && (
-                <div className={styles.emptyState}>No trades found for this ticker.</div>
+              {ledger.length === 0 && notionals.length === 0 && (
+                <div className={styles.emptyState}>No trades or dividends for this ticker.</div>
               )}
             </div>
           </>

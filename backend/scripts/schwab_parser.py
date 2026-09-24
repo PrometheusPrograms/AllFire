@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
 ZERO = Decimal("0")
@@ -38,6 +38,18 @@ class EquityBuy:
 
 
 @dataclass(frozen=True)
+class EquitySell:
+    activity_id: str
+    order_id: str | None
+    transaction_date: date
+    ticker: str
+    shares: int
+    price: Decimal
+    fees: Decimal
+    description: str | None
+
+
+@dataclass(frozen=True)
 class ReviewItem:
     activity_id: str
     reason: str
@@ -48,6 +60,7 @@ class ReviewItem:
 class ParseResult:
     dividends: list[CashDividend] = field(default_factory=list)
     equity_buys: list[EquityBuy] = field(default_factory=list)
+    equity_sells: list[EquitySell] = field(default_factory=list)
     review: list[ReviewItem] = field(default_factory=list)
 
 
@@ -142,6 +155,12 @@ def _fee_total(txn: dict[str, Any]) -> Decimal:
 def _share_qty(item: dict[str, Any]) -> Decimal:
     amount = _as_decimal(item.get("amount")) or ZERO
     return amount
+
+
+def _whole_shares(qty: Decimal) -> int:
+    """Nearest whole share. `int(Decimal)` truncates toward zero, which turned
+    LULU 9.9-share API fills into 9-share BTOs against 10-share statements."""
+    return int(abs(qty).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
 def _looks_like_interest(txn: dict[str, Any]) -> bool:
@@ -274,8 +293,38 @@ def classify_transactions(transactions: list[dict[str, Any]]) -> ParseResult:
             is_sell = shares < ZERO or instruction in {"SELL", "CLOSING"}
             is_buy = shares > ZERO or instruction in {"BUY", "OPENING"}
             if is_sell and not is_buy:
-                result.review.append(
-                    ReviewItem(activity_id=activity_id, reason="equity_sell", description=desc)
+                ticker = _instrument_symbol(item)
+                price = _as_decimal(item.get("price")) or ZERO
+                sell_shares = abs(shares)
+                if not ticker or sell_shares <= ZERO or price <= ZERO:
+                    result.review.append(
+                        ReviewItem(
+                            activity_id=activity_id,
+                            reason="incomplete_equity_sell",
+                            description=desc,
+                        )
+                    )
+                    continue
+                fees = _fee_total(txn)
+                share_count = _whole_shares(sell_shares)
+                if fees == ZERO:
+                    net = _as_decimal(txn.get("netAmount"))
+                    if net is not None:
+                        implied = (share_count * price) - net
+                        if implied > Decimal("0.005"):
+                            fees = implied
+                order_id = _as_str_id(txn.get("orderId") or txn.get("order_id")) or None
+                result.equity_sells.append(
+                    EquitySell(
+                        activity_id=activity_id,
+                        order_id=order_id,
+                        transaction_date=txn_date,
+                        ticker=ticker,
+                        shares=share_count,
+                        price=price,
+                        fees=fees,
+                        description=desc,
+                    )
                 )
                 continue
             if not is_buy:
@@ -299,7 +348,7 @@ def classify_transactions(transactions: list[dict[str, Any]]) -> ParseResult:
                 )
                 continue
             fees = _fee_total(txn)
-            share_count = int(shares)
+            share_count = _whole_shares(shares)
             if fees == ZERO:
                 net = _as_decimal(txn.get("netAmount"))
                 if net is not None:
