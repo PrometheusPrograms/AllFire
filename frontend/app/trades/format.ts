@@ -21,11 +21,43 @@ export function formatPercent(value: string | null | undefined, digits = 1): str
   return `${(num * 100).toFixed(digits)}%`;
 }
 
+const MONTHS = [
+  "JAN",
+  "FEB",
+  "MAR",
+  "APR",
+  "MAY",
+  "JUN",
+  "JUL",
+  "AUG",
+  "SEP",
+  "OCT",
+  "NOV",
+  "DEC",
+];
+
+/** Display-only: `DD MMM YY` (e.g. `04 SEP 24`). API/DB dates stay ISO
+ * `YYYY-MM-DD` so filters, sorts, and Postgres DATE columns keep working. */
+export function formatDateParts(
+  value: string | null | undefined
+): { day: string; month: string; year: string } | null {
+  if (!value) return null;
+  const isoDay = value.includes("T") ? value.slice(0, 10) : value;
+  const [year, month, day] = isoDay.split("-");
+  if (!year || !month || !day) return null;
+  const monthIndex = Number(month) - 1;
+  if (monthIndex < 0 || monthIndex > 11 || !Number.isFinite(monthIndex)) return null;
+  return {
+    day: day.padStart(2, "0"),
+    month: MONTHS[monthIndex],
+    year: year.slice(2),
+  };
+}
+
 export function formatDate(value: string | null | undefined): string {
-  if (!value) return "—";
-  const [year, month, day] = value.split("-");
-  if (!year || !month || !day) return value;
-  return `${month}/${day}/${year.slice(2)}`;
+  const parts = formatDateParts(value);
+  if (!parts) return value ? value : "—";
+  return `${parts.day} ${parts.month} ${parts.year}`;
 }
 
 export function formatNumber(value: number | string | null | undefined): string {
@@ -49,6 +81,17 @@ export function tradeShareCount(trade: {
   if (trade.num_of_shares != null) return trade.num_of_shares;
   if (trade.num_of_contracts != null) return trade.num_of_contracts * 100;
   return null;
+}
+
+/** Display-only: net credit per share × shares (OKW NET CREDIT TOTAL). */
+export function netCreditTotal(trade: {
+  net_credit_per_share: string | null;
+  num_of_contracts: number | null;
+  num_of_shares: number | null;
+}): string | null {
+  const shares = tradeShareCount(trade);
+  if (trade.net_credit_per_share == null || shares == null) return null;
+  return String(Number(trade.net_credit_per_share) * shares);
 }
 
 /** Spreadsheet Amount: total dollars of the trade (premium × shares, or
@@ -82,6 +125,7 @@ export const DISPLAY_STATUS_LABEL: Record<string, string> = {
   assigned: "Assigned",
   expired: "Expired",
   closed: "Closed",
+  paid: "Paid",
 };
 
 export const DISPLAY_STATUS_BADGE_CLASS: Record<string, string> = {
@@ -90,6 +134,7 @@ export const DISPLAY_STATUS_BADGE_CLASS: Record<string, string> = {
   assigned: "badgeAssigned",
   expired: "badgeExpired",
   closed: "badgeClosed",
+  paid: "badgeOpen",
 };
 
 /** Stable per-type color so the same strategy always reads the same color
@@ -105,5 +150,13 @@ export const TRADE_TYPE_COLOR: Record<string, string> = {
   "BULL PUT SPREAD": "#ec4899",
   BTO: "#6b7280",
   STC: "#84cc16",
+  DIVIDEND: "#059669",
+};
+
+export const LEDGER_SOURCE_LABEL: Record<string, string> = {
+  option: "Option",
+  BTO: "BTO",
+  STC: "STC",
+  dividend: "Dividend",
 };
 export const DEFAULT_TRADE_TYPE_COLOR = "#9a9a9e";

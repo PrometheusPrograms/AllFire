@@ -43,7 +43,7 @@ class Trade(Base):
     trade_type: Mapped[str] = mapped_column(Text, nullable=False)
     trade_parent_id: Mapped[int | None] = mapped_column(
         ForeignKey("trades.id")
-    )  # self-reference for rolls
+    )  # next OKW column after a ROLL; may be filled after insert by the loader / link_roll_parents
     date_trade_open: Mapped[date] = mapped_column(Date, nullable=False)
     expiration_date: Mapped[date | None] = mapped_column(Date)
     days_to_expiration: Mapped[int | None] = mapped_column(Integer)
@@ -63,6 +63,10 @@ class Trade(Base):
     net_credit_per_share: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
     risk_capital_per_share: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
     arorc: Mapped[Decimal | None] = mapped_column(Numeric(10, 6))
+    delta: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
+    probability_of_winning: Mapped[Decimal | None] = mapped_column(Numeric(8, 6))
+    final_arorc: Mapped[Decimal | None] = mapped_column(Numeric(10, 6))
+    result_net_credit: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     schwab_order_id: Mapped[str | None] = mapped_column(Text)
     # Schwab activity id is the stable unique key when order id is missing.
     schwab_activity_id: Mapped[str | None] = mapped_column(Text)

@@ -135,6 +135,20 @@ export interface TradeEvent {
   notes: string | null;
 }
 
+export interface ChainEvent extends TradeEvent {
+  trade_id: number;
+  strike_price: string | null;
+  expiration_date: string | null;
+  date_trade_open: string | null;
+  net_credit_per_share: string | null;
+  arorc: string | null;
+  next_trade_id: number | null;
+  roll_kind: string | null;
+  option_right: string | null;
+  to_strike: string | null;
+  to_expiration: string | null;
+}
+
 export interface Trade {
   id: number;
   account_id: number;
@@ -159,15 +173,34 @@ export interface Trade {
   arorc: string | null;
   needs_review: boolean;
   trade_status: "open" | "closed";
-  display_status: DisplayStatus;
+  display_status: DisplayStatus | null;
   date_trade_closed: string | null;
   date_trade_rolled: string | null;
+  trade_parent_id: number | null;
+  roll_legs: number;
+  strike_path: string | null;
+  chain_trade_ids: number[];
+  premium_collected: string | null;
+  chain_arorc: string | null;
+  chain_net_credit_per_share: string | null;
+  chain_dte: number | null;
+  closing_debit: string | null;
+  total_debit: string | null;
+  result: string | null;
+  result_date: string | null;
+  result_net_credit: string | null;
+  delta: string | null;
+  probability_of_winning: string | null;
+  final_arorc: string | null;
 }
 
 export interface TradeDetail extends Trade {
   events: TradeEvent[];
   running_basis: string | null;
   running_shares: string | null;
+  chain_root_id: number;
+  chain_events: ChainEvent[];
+  chain_legs: Trade[];
 }
 
 export interface TradeListResponse {
@@ -226,6 +259,8 @@ export interface AnalyticsSummary {
 export interface GetAnalyticsSummaryParams {
   account?: string;
   as_of?: string;
+  date_from?: string;
+  date_to?: string;
 }
 
 export function getAnalyticsSummary(
@@ -285,4 +320,36 @@ export function getPositionSummary(params: {
   account: string;
 }): Promise<PositionSummary> {
   return getJson<PositionSummary>("/api/positions/summary", { ...params });
+}
+
+export type LedgerSource = "option" | "BTO" | "STC" | "dividend";
+export type LedgerRowKind = "trade" | "dividend";
+
+export interface PositionLedgerRow {
+  row_kind: LedgerRowKind;
+  source: LedgerSource;
+  id: number;
+  date: string;
+  trade_type: string;
+  strike_price: string | null;
+  long_strike: string | null;
+  expiration_date: string | null;
+  shares: number | null;
+  amount: string | null;
+  // null for BTO/STC — status is an options-lifecycle concept and doesn't
+  // apply to a plain stock fill.
+  display_status: string | null;
+}
+
+export interface PositionLedger {
+  ticker: string;
+  account_name: string;
+  items: PositionLedgerRow[];
+}
+
+export function getPositionLedger(params: {
+  ticker: string;
+  account: string;
+}): Promise<PositionLedger> {
+  return getJson<PositionLedger>("/api/positions/ledger", { ...params });
 }

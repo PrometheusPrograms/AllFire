@@ -11,6 +11,12 @@
   --tr-row-border: #22222a;
   --tr-row-hover: #1b1c2b;
   --tr-kpi-attention-bg: #241d0d;
+  --tr-sheet-label: #f4f4f5;
+  --tr-sheet-label-bg: #1a1a1f;
+  --tr-sheet-value: #fafafa;
+  --tr-sheet-row-alt: #222228;
+  --tr-sheet-active: #24403c;
+  --tr-sheet-sticky-shadow: rgba(0, 0, 0, 0.55);
 }
 
 :global(html[data-theme="light"]) {
@@ -24,6 +30,12 @@
   --tr-row-border: #f0f0f2;
   --tr-row-hover: #f5f6ff;
   --tr-kpi-attention-bg: #fffaf0;
+  --tr-sheet-label: #27272a;
+  --tr-sheet-label-bg: #ececee;
+  --tr-sheet-value: #18181b;
+  --tr-sheet-row-alt: #f4f4f5;
+  --tr-sheet-active: #e6f3f0;
+  --tr-sheet-sticky-shadow: rgba(0, 0, 0, 0.16);
 }
 
 .page {
@@ -318,6 +330,30 @@
   background: var(--tr-row-hover, #f5f6ff);
 }
 
+/* Monospace + fixed ch slots: JUL and AUG are both 3 glyphs, so every
+   date occupies the same width when scanning down a column. */
+.dateCell {
+  display: inline-grid;
+  grid-template-columns: 2ch 3ch 2ch;
+  column-gap: 0.5ch;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", monospace;
+  font-size: 0.95em;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  font-kerning: none;
+  white-space: nowrap;
+}
+
+.dateDay {
+  text-align: right;
+}
+
+.dateMon,
+.dateYear {
+  text-align: left;
+}
+
 .statusWithAction {
   display: inline-flex;
   align-items: center;
@@ -332,6 +368,41 @@
 .outcomeToggle .chip {
   padding: 0.15rem 0.5rem;
   font-size: 0.7rem;
+}
+
+/* Always-visible per-row toggle for simulating assignment of a real, open
+   option trade — deliberately styled in the same amber as .badgeAssigned
+   so the color itself hints at what clicking it previews. */
+.simAssignToggle {
+  border: 1px solid var(--tr-border, #d9d9dc);
+  background: transparent;
+  color: var(--tr-text-secondary, #888);
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.simAssignToggle:hover {
+  border-color: #d97706;
+  color: #d97706;
+}
+
+.simAssignToggleActive,
+.simAssignToggleActive:hover {
+  background: #d97706;
+  border-color: #d97706;
+  color: #fff;
+}
+
+.simAssignedRow {
+  background: rgba(217, 119, 6, 0.08);
+}
+
+.simAssignedRow:hover {
+  background: rgba(217, 119, 6, 0.14);
 }
 
 .numeric {
@@ -483,14 +554,33 @@
   height: 100%;
   background: var(--tr-card-bg, #fff);
   padding: 1.5rem;
+  overflow-x: hidden;
   overflow-y: auto;
   box-shadow: -8px 0 24px rgba(0, 0, 0, 0.12);
+}
+
+.drawerFit {
+  --okw-pad: 3rem;
+  --okw-label: 10rem;
+  --okw-col: 11.25rem;
+  --okw-visible-cols: 1;
+  --okw-scroll-gutter: 0px;
+  width: min(
+    max(
+      40rem,
+      calc(
+        var(--okw-pad) + var(--okw-label) + (var(--okw-visible-cols) * var(--okw-col)) + 2px +
+          var(--okw-scroll-gutter)
+      )
+    ),
+    100%
+  );
 }
 
 /* The ticker drill-down needs room for a summary grid plus a trade table,
    so it gets a wider variant of the same slide-over. */
 .drawerWide {
-  width: min(880px, 100%);
+  width: min(980px, 100%);
 }
 
 .positionSummaryGrid {
@@ -611,32 +701,221 @@
   margin-bottom: 0.5rem;
 }
 
-.timeline {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
+.eventNav {
+  display: grid;
+  grid-template-columns:
+    max-content
+    minmax(7.25rem, max-content)
+    max-content
+    max-content
+    max-content
+    max-content
+    max-content;
+  column-gap: 0.7rem;
+  max-height: calc(4 * 2.15rem);
+  overflow-x: auto;
+  overflow-y: auto;
+  margin-bottom: 0.65rem;
+  border: 1px solid var(--tr-border, #2a2a2d);
+  border-radius: 10px;
+  scrollbar-width: thin;
 }
 
-.timelineItem {
-  border-left: 2px solid #4f46e5;
-  padding-left: 0.75rem;
-  padding-bottom: 0.1rem;
+.eventNavRow {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: center;
+  min-height: 2.15rem;
+  padding: 0.45rem 0.7rem;
+  border: none;
+  border-bottom: 1px solid var(--tr-row-border, #22222a);
+  background: transparent;
+  color: var(--tr-sheet-value, var(--tr-text, #ededed));
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
-.timelineType {
+.eventNavRow:last-child {
+  border-bottom: none;
+}
+
+.eventNavRowActive {
+  background: var(--tr-sheet-active, #1c3330);
+}
+
+.eventNavKind {
   font-size: 0.8rem;
   font-weight: 700;
+  white-space: nowrap;
 }
 
-.timelineDate {
-  font-size: 0.75rem;
+.eventNavDate,
+.eventNavShares,
+.eventNavStrike,
+.eventNavRight,
+.eventNavCredit,
+.eventNavExp {
+  font-size: 0.78rem;
+  font-family: var(--font-geist-mono, ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  color: var(--tr-sheet-label, #e4e4e7);
+  white-space: nowrap;
+}
+
+.eventNavShares,
+.eventNavStrike,
+.eventNavCredit {
+  text-align: right;
+}
+
+.eventNavRow:focus-visible {
+  outline: 2px solid #2dd4bf;
+  outline-offset: -2px;
+}
+
+.rollLegs {
+  margin-left: 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 600;
   color: var(--tr-text-secondary, #888);
 }
 
-.timelineNotes {
-  font-size: 0.78rem;
-  color: var(--tr-text-secondary, #777);
-  margin-top: 0.15rem;
+.legStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.85rem;
+}
+
+.legChip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--tr-border, #ddd);
+  border-radius: 6px;
+  background: var(--tr-card, #fff);
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.legChipActive {
+  border-color: #0f766e;
+  box-shadow: 0 0 0 1px #0f766e;
+}
+
+.legChipIndex {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--tr-text-secondary, #888);
+}
+
+.legChipMeta {
+  font-size: 0.7rem;
+  color: var(--tr-text-secondary, #888);
+}
+
+.okwSheetBlock {
+  margin-bottom: 1.25rem;
+}
+
+.okwSheetWrap {
+  overflow-x: auto;
+  border: 1px solid var(--tr-border, #ddd);
+  border-radius: 10px;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+
+.okwSheetOverflow {
+  overflow-x: scroll;
+}
+
+.okwSheet {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  color: var(--tr-sheet-value, var(--tr-text, #ededed));
+}
+
+.okwSheet th,
+.okwSheet td {
+  padding: 0;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--tr-row-border, #22222a);
+  background: var(--tr-card-bg, #151517);
+}
+
+.okwSheet tbody tr:nth-child(even) td {
+  background: var(--tr-sheet-row-alt, #1c1c20);
+}
+
+.okwSheet tbody tr:last-child th,
+.okwSheet tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.okwSheet th.okwLabel {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  width: 10rem;
+  min-width: 10rem;
+  white-space: normal;
+  line-height: 1.25;
+  padding: 0.62rem 0.85rem 0.62rem 1.25rem;
+  text-align: left;
+  font-family: var(--font-geist-sans, system-ui, sans-serif);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tr-sheet-label, #f4f4f5);
+  background: var(--tr-sheet-label-bg, #1a1a1f);
+  border-right: 1px solid var(--tr-border, #2a2a2d);
+  box-shadow: 8px 0 12px -8px var(--tr-sheet-sticky-shadow, rgba(0, 0, 0, 0.55));
+}
+
+.okwSheet td {
+  white-space: nowrap;
+  width: 11.25rem;
+  min-width: 11.25rem;
+}
+
+.okwSheet td.okwColActive {
+  background: var(--tr-sheet-active, #1c3330);
+}
+
+.okwCell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+  min-height: 2.6rem;
+  padding: 0.55rem 0.7rem;
+  border: none;
+  background: transparent;
+  color: var(--tr-sheet-value, var(--tr-text, #ededed));
+  font-family: var(--font-geist-mono, ui-monospace, monospace);
+  font-size: 1rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+  text-align: right;
+  cursor: pointer;
+}
+
+.okwCell:focus-visible {
+  outline: 2px solid #2dd4bf;
+  outline-offset: -2px;
+}
+
+.okwCell .dateCell {
+  font-size: 1em;
 }
 
 .loading,
