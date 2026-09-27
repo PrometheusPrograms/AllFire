@@ -296,6 +296,60 @@ def test_skips_buy_matching_assign_on_settlement_date(session_factory):
     assert result.btos_skipped_assign == 1
 
 
+def test_skips_buy_when_assign_event_is_stamped_on_open_date(session_factory):
+    """Older OKW loads dated ASSIGN on the day the put was sold (months before
+    Schwab's share delivery). The contract expiration still ties the fill to the
+    lot, so it must not be imported as a second BTO (GDXY double count)."""
+    with session_factory() as session:
+        account = session.scalar(select(Account))
+        put_type = session.scalar(select(TradeType).where(TradeType.type_name == "ROCT PUT"))
+        ticker = Ticker(ticker="GDXY")
+        session.add(ticker)
+        session.flush()
+        trade = Trade(
+            account_id=account.id,
+            ticker_id=ticker.id,
+            ticker="GDXY",
+            trade_type_id=put_type.id,
+            trade_type="ROCT PUT",
+            date_trade_open=date(2025, 5, 16),
+            expiration_date=date(2025, 7, 18),
+            num_of_contracts=1,
+            strike_price=Decimal("15"),
+            credit_debit=Decimal("0.52"),
+            commission_per_share=Decimal("0"),
+        )
+        session.add(trade)
+        session.flush()
+        session.add(
+            TradeEvent(trade_id=trade.id, event_type="ASSIGN", event_date=date(2025, 5, 16))
+        )
+        session.commit()
+
+    with session_factory() as session:
+        result = load_schwab(
+            session,
+            account_name="Rule 1",
+            import_batch="schwab_rule1_div_bto",
+            dividends=[],
+            equity_buys=[
+                _buy(
+                    activity_id="2006",
+                    order_id=None,
+                    ticker="GDXY",
+                    transaction_date=date(2025, 7, 21),
+                    shares=100,
+                    price=Decimal("15"),
+                    fees=Decimal("0"),
+                )
+            ],
+        )
+        session.commit()
+
+    assert result.btos_created == 0
+    assert result.btos_skipped_assign == 1
+
+
 def test_skips_sell_that_matches_call_assign_lot(session_factory):
     with session_factory() as session:
         account = session.scalar(select(Account))
@@ -582,3 +636,44 @@ def test_rerun_is_idempotent_for_stc(session_factory):
     assert result.stcs_skipped_existing == 1
     with session_factory() as session:
         assert len(session.scalars(select(Trade)).all()) == 1
+
+
+def test_symbolless_dividend_takes_ticker_from_linked_history(session_factory):
+    name = "YIELDMAX GOLD MINERS OPTION INCOME STRATEGY ETF"
+    with session_factory() as session:
+        load_schwab(
+            session,
+            account_name="Rule 1",
+            import_batch="schwab_rule1_div_bto",
+            dividends=[_dividend(ticker="GDXY", description=name)],
+            equity_buys=[],
+        )
+        result = load_schwab(
+            session,
+            account_name="Rule 1",
+            import_batch="schwab_rule1_div_bto",
+            dividends=[
+                _dividend(activity_id="1002", ticker=None, description=name),
+                _dividend(activity_id="1003", ticker=None, description="UNSEEN PAYER INC"),
+            ],
+            equity_buys=[],
+        )
+        session.commit()
+
+    assert result.dividends_created == 1
+    assert [item.reason for item in result.review] == ["dividend_ticker_unknown"]
+    with session_factory() as session:
+        flow = session.scalar(select(CashFlow).where(CashFlow.schwab_activity_id == "1002"))
+        assert session.get(Ticker, flow.ticker_id).ticker == "GDXY"
+        assert session.scalar(select(CashFlow).where(CashFlow.schwab_activity_id == "1003")) is None
+
+
+def test_order_imported_with_fewer_shares_is_flagged(session_factory):
+    with session_factory() as session:
+        load_schwab(session, account_name="Rule 1", import_batch="b", dividends=[], equity_buys=[_buy(shares=60)])
+        result = load_schwab(
+            session, account_name="Rule 1", import_batch="b", dividends=[],
+            equity_buys=[_buy(activity_id="2002", shares=100)],
+        )
+    assert result.btos_created == 0
+    assert result.review[0].reason.startswith("order_share_mismatch")

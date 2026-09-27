@@ -313,6 +313,7 @@ export interface PositionSummary {
   trading: ClassTotals;
   long_term: ClassTotals;
   total_premium_collected: string;
+  total_dividends_received: string;
 }
 
 export function getPositionSummary(params: {

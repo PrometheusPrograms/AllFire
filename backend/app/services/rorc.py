@@ -14,9 +14,12 @@ actually committed) — this is the production formula already reconciled
 against the spreadsheet in the existing `inv_track` app, and reduces to the
 plain sheet formula when `margin_percent == 100`.
 
-Mirrors the spreadsheet's own error handling: `IFERROR(NC/RC, 0)` and
-`IFERROR(365/DTE, 0)` both fall back to zero rather than raising, so these
-functions do the same for non-positive denominators.
+Mirrors the spreadsheet's own error handling: `IFERROR(NC/RC, 0)` falls back
+to zero rather than raising.
+
+Same-day (0-DTE) trades count as one day: DTE = MAX(1, EXP - TRADE DATE).
+They used to be entered with a fake Saturday expiration so the sheet's
+365/DTE wouldn't divide by zero; the true Friday expiration is stored now.
 """
 
 from decimal import Decimal
@@ -42,13 +45,18 @@ def calculate_rorc(
     return net_credit_per_share / effective_risk_capital
 
 
-def calculate_arorc(rorc: Decimal, days_to_expiration: int) -> Decimal:
-    """ARORC = RORC * (365 / days_to_expiration).
+def effective_days_to_expiration(days_to_expiration: int) -> int:
+    """Days used for annualizing: a same-day (0-DTE) trade counts as 1 day."""
+    return max(days_to_expiration, 1)
 
-    Returns `Decimal("0")` if `days_to_expiration` is not positive, matching
-    the spreadsheet's `IFERROR(365/DTE, 0)`.
+
+def calculate_arorc(rorc: Decimal, days_to_expiration: int) -> Decimal:
+    """ARORC = RORC * (365 / max(1, days_to_expiration)).
+
+    Returns `Decimal("0")` for a negative `days_to_expiration` (expiration
+    before the trade date is bad data, not a 0-DTE trade).
     """
-    if days_to_expiration <= 0:
+    if days_to_expiration < 0:
         return ZERO
-    multiplier = DAYS_PER_YEAR / Decimal(days_to_expiration)
+    multiplier = DAYS_PER_YEAR / Decimal(effective_days_to_expiration(days_to_expiration))
     return rorc * multiplier

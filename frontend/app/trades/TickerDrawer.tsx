@@ -115,6 +115,7 @@ interface DisplayTotals {
   longTermShares: number;
   costBasis: number;
   premium: number;
+  dividends: number;
   avgCostPerShare: number | null;
   costBasisPerShare: number | null;
 }
@@ -124,20 +125,34 @@ function toNumber(value: string): number {
   return Number.isFinite(num) ? num : 0;
 }
 
-function totalsFromSummary(summary: PositionSummary): DisplayTotals {
-  const totalShares = toNumber(summary.total.shares);
-  const costBasis = toNumber(summary.total.cost_basis);
-  const premium = toNumber(summary.total_premium_collected);
+/** Costs less every dollar the position has paid back: option premiums and
+ * cash dividends. */
+function reducedCostBasis(totals: DisplayTotals): number {
+  return totals.costBasis - totals.premium - totals.dividends;
+}
+
+/** Recomputes the per-share figures after shares/costs/premium change.
+ * Spreadsheet Basis/sh: (costs − premiums − dividends) / shares held. */
+function withPerShare(totals: DisplayTotals): DisplayTotals {
+  const shares = totals.totalShares;
   return {
-    totalShares,
+    ...totals,
+    avgCostPerShare: shares !== 0 ? totals.costBasis / shares : null,
+    costBasisPerShare: shares !== 0 ? reducedCostBasis(totals) / shares : null,
+  };
+}
+
+function totalsFromSummary(summary: PositionSummary): DisplayTotals {
+  return withPerShare({
+    totalShares: toNumber(summary.total.shares),
     tradingShares: toNumber(summary.trading.shares),
     longTermShares: toNumber(summary.long_term.shares),
-    costBasis,
-    premium,
-    avgCostPerShare: totalShares !== 0 ? costBasis / totalShares : null,
-    // Spreadsheet Basis/sh: (costs − premiums) / shares held.
-    costBasisPerShare: totalShares !== 0 ? (costBasis - premium) / totalShares : null,
-  };
+    costBasis: toNumber(summary.total.cost_basis),
+    premium: toNumber(summary.total_premium_collected),
+    dividends: toNumber(summary.total_dividends_received),
+    avgCostPerShare: null,
+    costBasisPerShare: null,
+  });
 }
 
 function applyNotional(totals: DisplayTotals, trade: NotionalTrade): DisplayTotals {
@@ -160,10 +175,7 @@ function applyNotional(totals: DisplayTotals, trade: NotionalTrade): DisplayTota
   if (trade.shareClass === "trading") next.tradingShares += shareDelta;
   else next.longTermShares += shareDelta;
 
-  next.avgCostPerShare = next.totalShares !== 0 ? next.costBasis / next.totalShares : null;
-  next.costBasisPerShare =
-    next.totalShares !== 0 ? (next.costBasis - next.premium) / next.totalShares : null;
-  return next;
+  return withPerShare(next);
 }
 
 /** Same math as backend/scripts/backfill_cost_basis.py's ASSIGN handling:
@@ -183,10 +195,7 @@ function applyRealAssignmentSim(totals: DisplayTotals, row: PositionLedgerRow): 
   if (shareClassForTradeType(row.trade_type) === "trading") next.tradingShares += shareDelta;
   else next.longTermShares += shareDelta;
 
-  next.avgCostPerShare = next.totalShares !== 0 ? next.costBasis / next.totalShares : null;
-  next.costBasisPerShare =
-    next.totalShares !== 0 ? (next.costBasis - next.premium) / next.totalShares : null;
-  return next;
+  return withPerShare(next);
 }
 
 export default function TickerDrawer({
@@ -351,7 +360,7 @@ export default function TickerDrawer({
               />
               <PositionCard
                 label="Total cost basis"
-                value={formatMoney(String(displayed.costBasis - displayed.premium))}
+                value={formatMoney(String(reducedCostBasis(displayed)))}
               />
               <PositionCard
                 label="Avg cost/share"
@@ -368,12 +377,17 @@ export default function TickerDrawer({
                     ? formatMoney(String(displayed.costBasisPerShare))
                     : "—"
                 }
-                subvalue="costs − premiums, per share"
+                subvalue="costs − premiums − dividends, per share"
               />
               <PositionCard
                 label="Premium collected"
                 value={formatMoney(String(displayed.premium))}
                 subvalue="lifetime, all statuses"
+              />
+              <PositionCard
+                label="Dividends received"
+                value={formatMoney(String(displayed.dividends))}
+                subvalue="lifetime, cash"
               />
             </div>
 

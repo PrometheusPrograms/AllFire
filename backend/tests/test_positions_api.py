@@ -208,6 +208,12 @@ def test_position_summary_total_premium_includes_all_option_trades_any_status(cl
     assert Decimal(body["total_premium_collected"]) == Decimal("650.00")
 
 
+def test_position_summary_totals_dividends_for_this_ticker(client):
+    params = {"ticker": "ADBE", "account": "Rule 1"}
+    body = client.get("/api/positions/summary", params=params).json()
+    assert Decimal(body["total_dividends_received"]) == Decimal("12.50")
+
+
 def test_position_summary_unknown_ticker_404s(client):
     response = client.get("/api/positions/summary", params={"ticker": "ZZZZ", "account": "Rule 1"})
     assert response.status_code == 404

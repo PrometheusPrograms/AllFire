@@ -1,0 +1,1052 @@
+{
+  "_doc": "Reviewed statement-truth corrections applied after the OKW import by scripts/apply_statement_corrections.py. Schwab statements are ground truth for fills; entries match trades by natural key, never DB id. Order matters: later entries may rely on earlier ones.",
+  "corrections": [
+    {
+      "id": "nke-rule1-2026-08-18-limit-price",
+      "account": "Rule 1",
+      "ticker": "NKE",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2026-08-18",
+      "expiration_date": "2026-08-28",
+      "strike_price": "38.50",
+      "match": {
+        "num_of_contracts": 2,
+        "credit_debit": "0.27"
+      },
+      "set": {
+        "num_of_contracts": 1,
+        "num_of_shares": 100,
+        "credit_debit": "0.22"
+      },
+      "recompute": true,
+      "events": {
+        "EXPIRE": "2026-08-28"
+      },
+      "statement": "Brokerage Statement_2026-08-31_742.PDF: NKE 08/28/2026 38.50P sold 1 @ 0.22 twice (21.59 each); ExpiredLong 08/31",
+      "reason": "OKW col AOU recorded 2 @ 0.27 (order quote); Schwab filled 1 @ 0.22"
+    },
+    {
+      "id": "nke-rule1-2026-08-18-expired",
+      "account": "Rule 1",
+      "ticker": "NKE",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2026-08-18",
+      "expiration_date": "2026-08-28",
+      "strike_price": "38.50",
+      "expect": 2,
+      "events": {
+        "EXPIRE": "2026-08-28"
+      },
+      "statement": "Brokerage Statement_2026-08-31_742.PDF: NKE 08/28/2026 38.50P ExpiredLong 08/31",
+      "reason": "Both 1-lot fills expired worthless"
+    },
+    {
+      "id": "nke-roth-2026-08-18-limit-price",
+      "account": "Roth",
+      "ticker": "NKE",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2026-08-18",
+      "expiration_date": "2026-08-28",
+      "strike_price": "38.50",
+      "match": {
+        "credit_debit": "0.27"
+      },
+      "set": {
+        "credit_debit": "0.22"
+      },
+      "recompute": true,
+      "events": {
+        "EXPIRE": "2026-08-28"
+      },
+      "statement": "Brokerage Statement_2026-08-31_467.PDF: NKE 08/28/2026 38.50P sold 1 @ 0.22 (21.59)",
+      "reason": "OKW col IK recorded 0.27 (order quote); Schwab filled 1 @ 0.22"
+    },
+    {
+      "id": "crm-2026-06-26-0dte",
+      "account": "Rule 1",
+      "ticker": "CRM",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2026-06-26",
+      "expiration_date": "2026-06-27",
+      "strike_price": "155.00",
+      "set": {
+        "expiration_date": "2026-06-26"
+      },
+      "events": {
+        "EXPIRE": "2026-06-26"
+      },
+      "statement": "Brokerage Statement_2026-06-30_742.PDF: CRM 06/26/2026 155.00P",
+      "reason": "0-DTE: real Friday expiration (ARORC now floors DTE at 1)"
+    },
+    {
+      "id": "adbe-2026-06-26-0dte",
+      "account": "Rule 1",
+      "ticker": "ADBE",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2026-06-26",
+      "expiration_date": "2026-06-27",
+      "strike_price": "197.50",
+      "set": {
+        "expiration_date": "2026-06-26"
+      },
+      "events": {
+        "EXPIRE": "2026-06-26"
+      },
+      "statement": "Brokerage Statement_2026-06-30_742.PDF: ADBE 06/26/2026 197.50P",
+      "reason": "0-DTE: real Friday expiration (ARORC now floors DTE at 1)"
+    },
+    {
+      "id": "arm-2026-06-26-0dte",
+      "account": "Rule 1",
+      "ticker": "ARM",
+      "trade_type": "RULE ONE CALL",
+      "date_trade_open": "2026-06-26",
+      "expiration_date": "2026-06-27",
+      "strike_price": "350.00",
+      "set": {
+        "expiration_date": "2026-06-26"
+      },
+      "events": {
+        "EXPIRE": "2026-06-26"
+      },
+      "statement": "Brokerage Statement_2026-06-30_742.PDF: ARM 06/26/2026 350.00C",
+      "reason": "0-DTE: real Friday expiration (ARORC now floors DTE at 1)"
+    },
+    {
+      "id": "celh-2026-08-07-0dte",
+      "account": "Rule 1",
+      "ticker": "CELH",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2026-08-07",
+      "expiration_date": "2026-08-08",
+      "strike_price": "26.50",
+      "expect": 2,
+      "set": {
+        "expiration_date": "2026-08-07"
+      },
+      "events": {
+        "EXPIRE": "2026-08-07"
+      },
+      "statement": "Brokerage Statement_2026-08-31_742.PDF: CELH 08/07/2026 26.50P sold 2 @ 0.09 and 1 @ 0.10",
+      "reason": "0-DTE: real Friday expiration (ARORC now floors DTE at 1)"
+    },
+    {
+      "id": "gtlb-2026-08-07-0dte",
+      "account": "Rule 1",
+      "ticker": "GTLB",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2026-08-07",
+      "expiration_date": "2026-08-08",
+      "strike_price": "31.50",
+      "set": {
+        "expiration_date": "2026-08-07"
+      },
+      "events": {
+        "EXPIRE": "2026-08-07"
+      },
+      "statement": "Brokerage Statement_2026-08-31_742.PDF: GTLB 08/07/2026 31.50P",
+      "reason": "0-DTE: real Friday expiration (ARORC now floors DTE at 1)"
+    },
+    {
+      "id": "oxy-2024-11-15-expiration",
+      "account": "Rule 1",
+      "ticker": "OXY",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2024-11-15",
+      "expiration_date": "2024-11-15",
+      "strike_price": "49.00",
+      "set": {
+        "expiration_date": "2024-11-22"
+      },
+      "recompute": true,
+      "events": {
+        "EXPIRE": "2024-11-22"
+      },
+      "statement": "Brokerage Statement_2024-11-30_742.PDF: OXY 11/22/2024 49.00P sold 2 @ 0.26; ExpiredLong 11/25",
+      "reason": "OKW expiration typo (same as open date); contract expired 2024-11-22"
+    },
+    {
+      "id": "rivn-2024-06-06-expiration",
+      "account": "Rule 1",
+      "ticker": "RIVN",
+      "trade_type": "RULE ONE PUT",
+      "date_trade_open": "2024-06-06",
+      "expiration_date": "2024-07-14",
+      "strike_price": "10.00",
+      "set": {
+        "expiration_date": "2024-06-14"
+      },
+      "recompute": true,
+      "events": {
+        "EXPIRE": "2024-06-14"
+      },
+      "statement": "Brokerage Statement_2024-06-30_742.PDF: RIVN 06/14/2024 10.00P sold 1 @ 0.10; ExpiredLong 06/17",
+      "reason": "OKW expiration typo (a Sunday, 07-14); contract expired 2024-06-14"
+    },
+    {
+      "id": "onon-roth-2026-03-13-partial",
+      "account": "Roth",
+      "ticker": "ONON",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2026-03-06",
+      "expiration_date": "2026-03-13",
+      "strike_price": "38.00",
+      "match": {
+        "num_of_contracts": 2
+      },
+      "split": {
+        "assigned_contracts": 1,
+        "expired_contracts": 1,
+        "expire_date": "2026-03-13"
+      },
+      "statement": "Stmt 2026-03-31_467: Sale (2.0000) @0.20; Option Assignment 1.0000; ExpiredLong 1.0000; Purchase 100 @38.00",
+      "reason": "1 of 2 contracts assigned, 1 expired (confirmed)"
+    },
+    {
+      "id": "onon-roth-2026-03-16-delivery-dup",
+      "account": "Roth",
+      "ticker": "ONON",
+      "trade_type": "BTO",
+      "date_trade_open": "2026-03-16",
+      "match": {
+        "num_of_shares": 100
+      },
+      "remove": true,
+      "statement": "Stmt 2026-03-31_467: Purchase ONON 100 @38.00 on 03/16",
+      "reason": "Share delivery of the ONON assignment, already the assignment lot"
+    },
+    {
+      "id": "gdx-2025-01-10-expired",
+      "account": "Rule 1",
+      "ticker": "GDX",
+      "trade_type": "ROCT CALL",
+      "date_trade_open": "2025-01-06",
+      "expiration_date": "2025-01-10",
+      "strike_price": "36.50",
+      "outcome": {
+        "from": "ASSIGN",
+        "to": "EXPIRE",
+        "date": "2025-01-10"
+      },
+      "statement": "Stmt 2025-01-31_742: ExpiredLong GDX $36.5C 2.0000",
+      "reason": "Statement: expired, not assigned"
+    },
+    {
+      "id": "lrcx-49-2025-04-25-expired",
+      "account": "Rule 1",
+      "ticker": "LRCX",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2025-04-21",
+      "expiration_date": "2025-04-25",
+      "strike_price": "49.00",
+      "outcome": {
+        "from": "ASSIGN",
+        "to": "EXPIRE",
+        "date": "2025-04-25"
+      },
+      "statement": "Stmt 2025-04-30_742: ExpiredLong LRCX $49P 2.0000",
+      "reason": "Statement: expired, not assigned"
+    },
+    {
+      "id": "lrcx-48.5-2025-04-25-expired",
+      "account": "Rule 1",
+      "ticker": "LRCX",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2025-04-21",
+      "expiration_date": "2025-04-25",
+      "strike_price": "48.50",
+      "outcome": {
+        "from": "ASSIGN",
+        "to": "EXPIRE",
+        "date": "2025-04-25"
+      },
+      "statement": "Stmt 2025-04-30_742: ExpiredLong LRCX $48.5P 1.0000",
+      "reason": "Statement: expired, not assigned"
+    },
+    {
+      "id": "odfl-2025-10-17-expired",
+      "account": "Rule 1",
+      "ticker": "ODFL",
+      "trade_type": "RULE ONE PUT",
+      "date_trade_open": "2025-10-01",
+      "expiration_date": "2025-10-17",
+      "strike_price": "130.00",
+      "outcome": {
+        "from": "ASSIGN",
+        "to": "EXPIRE",
+        "date": "2025-10-17"
+      },
+      "statement": "Stmt 2025-10-31_742: ExpiredLong ODFL $130P 1.0000",
+      "reason": "Statement: expired, not assigned"
+    },
+    {
+      "id": "slv-29-2025-04-21-expired",
+      "account": "Rule 1",
+      "ticker": "SLV",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2025-04-16",
+      "expiration_date": "2025-04-21",
+      "strike_price": "29.00",
+      "outcome": {
+        "from": "ASSIGN",
+        "to": "EXPIRE",
+        "date": "2025-04-21"
+      },
+      "statement": "Stmt 2025-04-30_742: ExpiredLong SLV $29P 2.0000",
+      "reason": "Statement: expired, not assigned"
+    },
+    {
+      "id": "oxy-48.5-2024-12-06-assigned",
+      "account": "Rule 1",
+      "ticker": "OXY",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2024-11-26",
+      "expiration_date": "2024-12-06",
+      "strike_price": "48.50",
+      "outcome": {
+        "from": "EXPIRE",
+        "to": "ASSIGN",
+        "date": "2024-12-06"
+      },
+      "statement": "Stmt 2024-12-31_742: Option Assignment OXY $48.5P 12/06 1.0000; Purchase 100 @48.50 12/09",
+      "reason": "Statement: assigned (confirmed)"
+    },
+    {
+      "id": "oxy-48.5-2024-12-13-assigned",
+      "account": "Rule 1",
+      "ticker": "OXY",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2024-12-04",
+      "expiration_date": "2024-12-13",
+      "strike_price": "48.50",
+      "outcome": {
+        "from": "EXPIRE",
+        "to": "ASSIGN",
+        "date": "2024-12-13"
+      },
+      "statement": "Stmt 2024-12-31_742: Option Assignment OXY $48.5P 12/13 2.0000; Purchase 200 @48.50 12/16",
+      "reason": "Statement: assigned (confirmed)"
+    },
+    {
+      "id": "oxy-2024-12-09-delivery-dup",
+      "account": "Rule 1",
+      "ticker": "OXY",
+      "trade_type": "BTO",
+      "date_trade_open": "2024-12-09",
+      "match": {
+        "num_of_shares": 100
+      },
+      "remove": true,
+      "statement": "Stmt 2024-12-31_742: Purchase OXY 100 @48.50 12/09",
+      "reason": "Share delivery of OXY #830 assignment"
+    },
+    {
+      "id": "oxy-2024-12-16-delivery-dup",
+      "account": "Rule 1",
+      "ticker": "OXY",
+      "trade_type": "BTO",
+      "date_trade_open": "2024-12-16",
+      "match": {
+        "num_of_shares": 200
+      },
+      "remove": true,
+      "statement": "Stmt 2024-12-31_742: Purchase OXY 200 @48.50 12/16",
+      "reason": "Share delivery of OXY #842 assignment"
+    },
+    {
+      "id": "slv-27.5c-2025-01-10-contracts",
+      "account": "Rule 1",
+      "ticker": "SLV",
+      "trade_type": "ROCT CALL",
+      "date_trade_open": "2025-01-06",
+      "expiration_date": "2025-01-10",
+      "strike_price": "27.50",
+      "match": {
+        "num_of_contracts": 4
+      },
+      "set": {
+        "num_of_contracts": 5,
+        "num_of_shares": 500
+      },
+      "recompute": true,
+      "statement": "Stmt 2025-01-31_742: Sale (5.0000) @0.18; Option Assignment 5.0000; Sale SLV 500 @27.50",
+      "reason": "Statement: 5 contracts sold and assigned"
+    },
+    {
+      "id": "v-2026-06-05-strike",
+      "account": "Rule 1",
+      "ticker": "V",
+      "trade_type": "ROCT CALL",
+      "date_trade_open": "2026-06-03",
+      "expiration_date": "2026-06-05",
+      "strike_price": "320.00",
+      "set": {
+        "strike_price": "322.50"
+      },
+      "recompute": true,
+      "statement": "Stmt 2026-06-30_742: Sale V $322.5C (1.0000) @0.30; Option Assignment 1.0000; Sale V 100 @322.50",
+      "reason": "Strike was $322.50 (confirmed)"
+    },
+    {
+      "id": "sfm-75-2025-12-19-contracts",
+      "account": "Rule 1",
+      "ticker": "SFM",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2025-12-16",
+      "expiration_date": "2025-12-19",
+      "strike_price": "75.00",
+      "match": {
+        "num_of_contracts": 2
+      },
+      "set": {
+        "num_of_contracts": 1,
+        "num_of_shares": 100
+      },
+      "recompute": true,
+      "statement": "Stmt 2025-12-31_742: Sale SFM $75P (1.0000) @0.20",
+      "reason": "Statement: 1 @0.20 (confirmed)"
+    },
+    {
+      "id": "onon-roth-647-expiration",
+      "account": "Roth",
+      "ticker": "ONON",
+      "trade_type": "RULE ONE PUT",
+      "date_trade_open": "2026-03-30",
+      "expiration_date": "2026-04-02",
+      "strike_price": "28.00",
+      "set": {
+        "expiration_date": "2026-04-10"
+      },
+      "recompute": true,
+      "events": {
+        "EXPIRE": "2026-04-10"
+      },
+      "statement": "Stmt 2026-03-31_467: 03/31 Sale ONON $28P EXP04/10/26 (1.0000) @0.20",
+      "reason": "It is the $28P exp 04/10 (confirmed)"
+    },
+    {
+      "id": "tsla-roth-872-expiration",
+      "account": "Roth",
+      "ticker": "TSLA",
+      "trade_type": "ROCT CALL",
+      "date_trade_open": "2024-11-08",
+      "expiration_date": "2024-11-08",
+      "strike_price": "280.00",
+      "set": {
+        "expiration_date": "2024-11-15"
+      },
+      "recompute": true,
+      "events": {
+        "ROLL": "2024-11-14"
+      },
+      "statement": "Stmt 2024-11-30_467: 11/12 Sale TSLA 11/15 $280C @39.67 + BTC 11/08 @38.12; 11/15 Sale 11/22 $280C @33.68 + BTC 11/15 @31.71",
+      "reason": "Roll leg is the 11/15 call (confirmed); rolled again 11/14 into the 11/22 call"
+    },
+    {
+      "id": "adbe-265-2026-04-17-early",
+      "account": "Rule 1",
+      "ticker": "ADBE",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2026-04-08",
+      "expiration_date": "2026-04-17",
+      "strike_price": "265.00",
+      "events": {
+        "ASSIGN": "2026-04-10"
+      },
+      "statement": "Stmt 2026-04-30_742: Option Assignment ADBE $265P on 04/10",
+      "reason": "Early assignment: statement date"
+    },
+    {
+      "id": "arm-124-2026-01-23-early",
+      "account": "Rule 1",
+      "ticker": "ARM",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2025-12-23",
+      "expiration_date": "2026-01-23",
+      "strike_price": "124.00",
+      "events": {
+        "ASSIGN": "2026-01-20"
+      },
+      "statement": "Stmt 2026-01-31_742: Option Assignment ARM $124P on 01/20",
+      "reason": "Early assignment: statement date"
+    },
+    {
+      "id": "cmg-35-2025-11-21-early",
+      "account": "Rule 1",
+      "ticker": "CMG",
+      "trade_type": "RULE ONE PUT",
+      "date_trade_open": "2025-10-31",
+      "expiration_date": "2025-11-21",
+      "strike_price": "35.00",
+      "events": {
+        "ASSIGN": "2025-11-20"
+      },
+      "statement": "Stmt 2025-11-30_742: Option Assignment CMG $35P on 11/20",
+      "reason": "Early assignment: statement date"
+    },
+    {
+      "id": "rivn-eu-2024-10-30-no-fill",
+      "account": "Rule 1",
+      "ticker": "RIVN",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2024-10-30",
+      "expiration_date": "2024-11-15",
+      "strike_price": "8.00",
+      "match": {
+        "num_of_contracts": 10
+      },
+      "remove": true,
+      "statement": "Stmts Oct/Nov 2024 (742/641/467): only one $8P 11/15 sale (10 @0.23, 10/16); 10/31 holding 10 short",
+      "reason": "OKW 2024 col EU: no fill (confirmed)"
+    },
+    {
+      "id": "oxy-cc-2025-01-31-no-fill",
+      "account": "Rule 1",
+      "ticker": "OXY",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2025-01-31",
+      "expiration_date": "2025-02-07",
+      "strike_price": "44.50",
+      "remove": true,
+      "statement": "Stmt 2025-02-28_742: only one $44.5P 02/07 sale (02/04, 1 @0.13)",
+      "reason": "OKW 2025 col CC: no fill (confirmed)"
+    },
+    {
+      "id": "oxy-hm-2024-12-09-no-fill",
+      "account": "Rule 1",
+      "ticker": "OXY",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2024-12-09",
+      "expiration_date": "2024-12-13",
+      "strike_price": "47.50",
+      "remove": true,
+      "statement": "Stmt 2024-12-31_742: only one $47.5P 12/13 sale (1 @0.16)",
+      "reason": "OKW 2024 col HM: no fill (confirmed)"
+    },
+    {
+      "id": "tsla-265c-2025-03-14-dup",
+      "account": "Rule 1",
+      "ticker": "TSLA",
+      "trade_type": "ROCT CALL",
+      "date_trade_open": "2025-03-12",
+      "expiration_date": "2025-03-14",
+      "strike_price": "265.00",
+      "remove": true,
+      "statement": "Stmt 2025-03-31_641: Sale $265C (2.0000) @2.56 03/13; ExpiredLong 2.0000",
+      "reason": "Same fill as 641 row #1794 (statement details kept, Rule 1)"
+    },
+    {
+      "id": "tsla-322.5c-2025-07-18-dup",
+      "account": "Rule 1",
+      "ticker": "TSLA",
+      "trade_type": "RULE ONE CALL",
+      "date_trade_open": "2025-07-09",
+      "expiration_date": "2025-07-18",
+      "strike_price": "322.50",
+      "remove": true,
+      "statement": "Stmt 2025-07-31_641: Sale $322.5C (1.0000) @1.71 07/10; Purchase CoverShort @5.95",
+      "reason": "Same fill as 641 row #1796 (statement: bought back @5.95, not expired)"
+    },
+    {
+      "id": "tsla-355c-2025-08-15-dup",
+      "account": "Rule 1",
+      "ticker": "TSLA",
+      "trade_type": "RULE ONE CALL",
+      "date_trade_open": "2025-08-08",
+      "expiration_date": "2025-08-15",
+      "strike_price": "355.00",
+      "remove": true,
+      "statement": "Stmt 2025-08-31_641: Sale $355C (1.0000) @1.40 08/11; ExpiredLong 1.0000",
+      "reason": "Same fill as 641 row #1798"
+    },
+    {
+      "id": "lulu-rule1-2026-09-08-95p-missing-from-okw",
+      "account": "Rule 1",
+      "ticker": "LULU",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2026-09-08",
+      "expiration_date": "2026-09-18",
+      "strike_price": "95.00",
+      "add": {
+        "num_of_contracts": 1,
+        "credit_debit": "0.67",
+        "commission_per_share": "0.0041"
+      },
+      "events": {
+        "EXPIRE": "2026-09-18"
+      },
+      "statement": "Schwab Trader API activity (acct 742), pending the 2026-09-30 statement: #130148034179 sold 1 @ 0.67; EXPIRE #131164289966",
+      "reason": "Filled at Schwab but missing from OKW; trade type confirmed by user 2026-09-27"
+    },
+    {
+      "id": "oxy-rule1-2026-09-08-64c-missing-from-okw",
+      "account": "Rule 1",
+      "ticker": "OXY",
+      "trade_type": "ROCT CALL",
+      "date_trade_open": "2026-09-08",
+      "expiration_date": "2026-09-18",
+      "strike_price": "64.00",
+      "add": {
+        "num_of_contracts": 2,
+        "credit_debit": "0.35",
+        "commission_per_share": "0.0041"
+      },
+      "events": {
+        "EXPIRE": "2026-09-18"
+      },
+      "statement": "Schwab Trader API activity (acct 742), pending the 2026-09-30 statement: #130145515423 sold 2 @ 0.35; EXPIRE #131164291135",
+      "reason": "Filled at Schwab but missing from OKW; trade type confirmed by user 2026-09-27"
+    },
+    {
+      "id": "oxy-rule1-2026-09-15-67c-missing-from-okw",
+      "account": "Rule 1",
+      "ticker": "OXY",
+      "trade_type": "ROCT CALL",
+      "date_trade_open": "2026-09-15",
+      "expiration_date": "2026-09-25",
+      "strike_price": "67.00",
+      "add": {
+        "num_of_contracts": 2,
+        "credit_debit": "0.37",
+        "commission_per_share": "0.0041"
+      },
+      "events": {
+        "EXPIRE": "2026-09-25"
+      },
+      "statement": "Schwab Trader API activity (acct 742), pending the 2026-09-30 statement: #130769505994 sold 2 @ 0.37; EXPIRE #131821255949",
+      "reason": "Filled at Schwab but missing from OKW; trade type confirmed by user 2026-09-27"
+    },
+    {
+      "id": "lulu-rule1-2026-09-21-95p-missing-from-okw",
+      "account": "Rule 1",
+      "ticker": "LULU",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2026-09-21",
+      "expiration_date": "2026-09-25",
+      "strike_price": "95.00",
+      "add": {
+        "num_of_contracts": 1,
+        "credit_debit": "0.22",
+        "commission_per_share": "0.0041"
+      },
+      "events": {
+        "EXPIRE": "2026-09-25"
+      },
+      "statement": "Schwab Trader API activity (acct 742), pending the 2026-09-30 statement: #131285159402 sold 1 @ 0.22; EXPIRE #131821255948",
+      "reason": "Filled at Schwab but missing from OKW; trade type confirmed by user 2026-09-27"
+    },
+    {
+      "id": "lulu-rule1-2026-09-21-94p-missing-from-okw",
+      "account": "Rule 1",
+      "ticker": "LULU",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2026-09-21",
+      "expiration_date": "2026-10-02",
+      "strike_price": "94.00",
+      "add": {
+        "num_of_contracts": 1,
+        "credit_debit": "0.57",
+        "commission_per_share": "0.0041"
+      },
+      "statement": "Schwab Trader API activity (acct 742), pending the 2026-09-30 statement: #131278438913 sold 1 @ 0.57; open",
+      "reason": "Filled at Schwab but missing from OKW; trade type confirmed by user 2026-09-27"
+    },
+    {
+      "id": "adbe-rule1-2026-08-20-240c-missing-from-okw",
+      "account": "Rule 1",
+      "ticker": "ADBE",
+      "trade_type": "ROCT CALL",
+      "date_trade_open": "2026-08-20",
+      "expiration_date": "2026-09-25",
+      "strike_price": "240.00",
+      "add": {
+        "num_of_contracts": 1,
+        "credit_debit": "38.90",
+        "commission_per_share": "0.0041"
+      },
+      "events": {
+        "EXPIRE": "2026-09-25"
+      },
+      "statement": "Brokerage Statement_2026-08-31_742.PDF: ADBE 09/25/2026 240.00C Sale 1 @ 38.90 (settled 08/21); API #128708965327 traded 08/20; EXPIRE #131821255663",
+      "reason": "Filled at Schwab but missing from OKW; trade type confirmed by user 2026-09-27"
+    },
+    {
+      "id": "nke-roth-2026-08-25-37.5p-missing-from-okw",
+      "account": "Roth",
+      "ticker": "NKE",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2026-08-25",
+      "expiration_date": "2026-09-04",
+      "strike_price": "37.50",
+      "add": {
+        "num_of_contracts": 1,
+        "credit_debit": "0.21",
+        "commission_per_share": "0.0041"
+      },
+      "events": {
+        "EXPIRE": "2026-09-04"
+      },
+      "statement": "Brokerage Statement_2026-08-31_467.PDF: NKE 09/04/2026 37.50P Sale 1 @ 0.21 (settled 08/26); API #129037615169 traded 08/25; EXPIRE #130040086250",
+      "reason": "Filled at Schwab but missing from OKW; trade type confirmed by user 2026-09-27"
+    },
+    {
+      "id": "celh-roth-2026-08-03-20p-expired",
+      "account": "Roth",
+      "ticker": "CELH",
+      "trade_type": "ROCS BULL PUT SPREAD",
+      "date_trade_open": "2026-08-03",
+      "expiration_date": "2026-09-18",
+      "strike_price": "20.00",
+      "events": {
+        "EXPIRE": "2026-09-18"
+      },
+      "statement": "Schwab Trader API activity (acct 467), pending the 2026-09-30 statement: Removed due to Expiration (2026-09-18)",
+      "reason": "Expired worthless; not yet recorded in OKW"
+    },
+    {
+      "id": "celh-roth-2026-09-16-26p-expired",
+      "account": "Roth",
+      "ticker": "CELH",
+      "trade_type": "RULE ONE PUT",
+      "date_trade_open": "2026-09-16",
+      "expiration_date": "2026-09-25",
+      "strike_price": "26.00",
+      "events": {
+        "EXPIRE": "2026-09-25"
+      },
+      "statement": "Schwab Trader API activity (acct 467), pending the 2026-09-30 statement: Removed due to Expiration (2026-09-25)",
+      "reason": "Expired worthless; not yet recorded in OKW"
+    },
+    {
+      "id": "nke-roth-2026-09-15-37.5c-expired",
+      "account": "Roth",
+      "ticker": "NKE",
+      "trade_type": "ROCT CALL",
+      "date_trade_open": "2026-09-15",
+      "expiration_date": "2026-09-25",
+      "strike_price": "37.50",
+      "events": {
+        "EXPIRE": "2026-09-25"
+      },
+      "statement": "Schwab Trader API activity (acct 467), pending the 2026-09-30 statement: Removed due to Expiration (2026-09-25)",
+      "reason": "Expired worthless; not yet recorded in OKW"
+    },
+    {
+      "id": "nke-roth-2026-09-18-34.5p-expired",
+      "account": "Roth",
+      "ticker": "NKE",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2026-09-18",
+      "expiration_date": "2026-09-25",
+      "strike_price": "34.50",
+      "events": {
+        "EXPIRE": "2026-09-25"
+      },
+      "statement": "Schwab Trader API activity (acct 467), pending the 2026-09-30 statement: Removed due to Expiration (2026-09-25)",
+      "reason": "Expired worthless; not yet recorded in OKW"
+    },
+    {
+      "id": "onon-roth-2026-09-15-24.5p-expired",
+      "account": "Roth",
+      "ticker": "ONON",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2026-09-15",
+      "expiration_date": "2026-09-25",
+      "strike_price": "24.50",
+      "events": {
+        "EXPIRE": "2026-09-25"
+      },
+      "statement": "Schwab Trader API activity (acct 467), pending the 2026-09-30 statement: Removed due to Expiration (2026-09-25)",
+      "reason": "Expired worthless; not yet recorded in OKW"
+    },
+    {
+      "id": "onon-roth-2026-09-21-25p-expired",
+      "account": "Roth",
+      "ticker": "ONON",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2026-09-21",
+      "expiration_date": "2026-09-25",
+      "strike_price": "25.00",
+      "events": {
+        "EXPIRE": "2026-09-25"
+      },
+      "statement": "Schwab Trader API activity (acct 467), pending the 2026-09-30 statement: Removed due to Expiration (2026-09-25)",
+      "reason": "Expired worthless; not yet recorded in OKW"
+    },
+    {
+      "id": "lulu-rule1-2026-09-04-93p-fill-price",
+      "account": "Rule 1",
+      "ticker": "LULU",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2026-09-04",
+      "expiration_date": "2026-09-11",
+      "strike_price": "93.00",
+      "match": {
+        "credit_debit": "0.40"
+      },
+      "set": {
+        "credit_debit": "0.41"
+      },
+      "recompute": true,
+      "statement": "Schwab Trader API activity (acct 742), pending the 2026-09-30 statement: LULU 09/11/2026 93P sold 1 @ 0.41",
+      "reason": "OKW recorded 0.40 (order price); Schwab filled 0.41"
+    },
+    {
+      "id": "oxy-rule1-2026-09-01-64c-fill-price",
+      "account": "Rule 1",
+      "ticker": "OXY",
+      "trade_type": "RULE ONE CALL",
+      "date_trade_open": "2026-09-01",
+      "expiration_date": "2026-09-11",
+      "strike_price": "64.00",
+      "match": {
+        "credit_debit": "0.37"
+      },
+      "set": {
+        "credit_debit": "0.38"
+      },
+      "recompute": true,
+      "statement": "Schwab Trader API activity (acct 742), pending the 2026-09-30 statement: OXY 09/11/2026 64C sold 1 @ 0.38",
+      "reason": "OKW recorded 0.37 (order price); Schwab filled 0.38"
+    },
+    {
+      "id": "celh-rule1-2026-09-08-27p-fill-price",
+      "account": "Rule 1",
+      "ticker": "CELH",
+      "trade_type": "RULE ONE PUT",
+      "date_trade_open": "2026-09-08",
+      "expiration_date": "2026-09-18",
+      "strike_price": "27.00",
+      "match": {
+        "credit_debit": "0.22"
+      },
+      "set": {
+        "credit_debit": "0.23"
+      },
+      "recompute": true,
+      "statement": "Schwab Trader API activity (acct 742), pending the 2026-09-30 statement: CELH 09/18/2026 27P sold 1 @ 0.23",
+      "reason": "OKW recorded 0.22 (order price); Schwab filled 0.23"
+    },
+    {
+      "id": "cmg-rule1-2026-06-10-25p-expired",
+      "account": "Rule 1",
+      "ticker": "CMG",
+      "trade_type": "ROCS BULL PUT SPREAD",
+      "date_trade_open": "2026-06-10",
+      "expiration_date": "2026-09-18",
+      "strike_price": "25.00",
+      "events": {
+        "EXPIRE": "2026-09-18"
+      },
+      "statement": "Schwab Trader API activity (acct 742), pending the 2026-09-30 statement: Removed due to Expiration (2026-09-18)",
+      "reason": "Expired worthless; not yet recorded in OKW"
+    },
+    {
+      "id": "slv-rule1-2026-09-18-59.5p-expired",
+      "account": "Rule 1",
+      "ticker": "SLV",
+      "trade_type": "RULE ONE PUT",
+      "date_trade_open": "2026-09-18",
+      "expiration_date": "2026-09-21",
+      "strike_price": "59.50",
+      "events": {
+        "EXPIRE": "2026-09-21"
+      },
+      "statement": "Schwab Trader API activity (acct 742), pending the 2026-09-30 statement: Removed due to Expiration (2026-09-21)",
+      "reason": "Expired worthless; not yet recorded in OKW"
+    },
+    {
+      "id": "as-rule1-2026-09-15-24p-expired",
+      "account": "Rule 1",
+      "ticker": "AS",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2026-09-15",
+      "expiration_date": "2026-09-25",
+      "strike_price": "24.00",
+      "events": {
+        "EXPIRE": "2026-09-25"
+      },
+      "statement": "Schwab Trader API activity (acct 742), pending the 2026-09-30 statement: Removed due to Expiration (2026-09-25)",
+      "reason": "Expired worthless; not yet recorded in OKW"
+    },
+    {
+      "id": "bkng-rule1-2026-09-18-165p-assigned",
+      "account": "Rule 1",
+      "ticker": "BKNG",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2026-09-18",
+      "expiration_date": "2026-09-25",
+      "strike_price": "165.00",
+      "events": {
+        "ASSIGN": "2026-09-25"
+      },
+      "statement": "Schwab Trader API activity (acct 742), pending the 2026-09-30 statement: Removed due to Assignment (2026-09-25)",
+      "reason": "Assigned, 100 shares delivered at the strike; not yet recorded in OKW"
+    },
+    {
+      "id": "celh-rule1-2026-09-16-26p-expired",
+      "account": "Rule 1",
+      "ticker": "CELH",
+      "trade_type": "RULE ONE PUT",
+      "date_trade_open": "2026-09-16",
+      "expiration_date": "2026-09-25",
+      "strike_price": "26.00",
+      "events": {
+        "EXPIRE": "2026-09-25"
+      },
+      "statement": "Schwab Trader API activity (acct 742), pending the 2026-09-30 statement: Removed due to Expiration (2026-09-25)",
+      "reason": "Expired worthless; not yet recorded in OKW"
+    },
+    {
+      "id": "celh-rule1-2026-09-18-26.5p-expired",
+      "account": "Rule 1",
+      "ticker": "CELH",
+      "trade_type": "RULE ONE PUT",
+      "date_trade_open": "2026-09-18",
+      "expiration_date": "2026-09-25",
+      "strike_price": "26.50",
+      "events": {
+        "EXPIRE": "2026-09-25"
+      },
+      "statement": "Schwab Trader API activity (acct 742), pending the 2026-09-30 statement: Removed due to Expiration (2026-09-25)",
+      "reason": "Expired worthless; not yet recorded in OKW"
+    },
+    {
+      "id": "fisv-rule1-2026-09-15-47.5p-assigned",
+      "account": "Rule 1",
+      "ticker": "FISV",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2026-09-15",
+      "expiration_date": "2026-09-25",
+      "strike_price": "47.50",
+      "events": {
+        "ASSIGN": "2026-09-25"
+      },
+      "statement": "Schwab Trader API activity (acct 742), pending the 2026-09-30 statement: Removed due to Assignment (2026-09-25)",
+      "reason": "Assigned, 100 shares delivered at the strike; not yet recorded in OKW"
+    },
+    {
+      "id": "fisv-rule1-2026-09-18-49c-expired",
+      "account": "Rule 1",
+      "ticker": "FISV",
+      "trade_type": "ROCT CALL",
+      "date_trade_open": "2026-09-18",
+      "expiration_date": "2026-09-25",
+      "strike_price": "49.00",
+      "events": {
+        "EXPIRE": "2026-09-25"
+      },
+      "statement": "Schwab Trader API activity (acct 742), pending the 2026-09-30 statement: Removed due to Expiration (2026-09-25)",
+      "reason": "Expired worthless; not yet recorded in OKW"
+    },
+    {
+      "id": "fisv-rule1-2026-09-18-47.5c-expired",
+      "account": "Rule 1",
+      "ticker": "FISV",
+      "trade_type": "ROCT CALL",
+      "date_trade_open": "2026-09-18",
+      "expiration_date": "2026-09-25",
+      "strike_price": "47.50",
+      "events": {
+        "EXPIRE": "2026-09-25"
+      },
+      "statement": "Schwab Trader API activity (acct 742), pending the 2026-09-30 statement: Removed due to Expiration (2026-09-25)",
+      "reason": "Expired worthless; not yet recorded in OKW"
+    },
+    {
+      "id": "lulu-rule1-2026-09-15-92p-expired",
+      "account": "Rule 1",
+      "ticker": "LULU",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2026-09-15",
+      "expiration_date": "2026-09-25",
+      "strike_price": "92.00",
+      "events": {
+        "EXPIRE": "2026-09-25"
+      },
+      "statement": "Schwab Trader API activity (acct 742), pending the 2026-09-30 statement: Removed due to Expiration (2026-09-25)",
+      "reason": "Expired worthless; not yet recorded in OKW"
+    },
+    {
+      "id": "nke-rule1-2026-09-18-34.5p-fill-price-expired",
+      "account": "Rule 1",
+      "ticker": "NKE",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2026-09-18",
+      "expiration_date": "2026-09-25",
+      "strike_price": "34.50",
+      "match": {
+        "credit_debit": "0.21"
+      },
+      "set": {
+        "credit_debit": "0.22"
+      },
+      "recompute": true,
+      "events": {
+        "EXPIRE": "2026-09-25"
+      },
+      "statement": "Schwab Trader API activity (acct 742), pending the 2026-09-30 statement: NKE 09/25/2026 34.5P sold 1 @ 0.22; Removed due to Expiration (2026-09-25)",
+      "reason": "OKW recorded 0.21 (order price); Schwab filled 0.22; Expired worthless; not yet recorded in OKW"
+    },
+    {
+      "id": "onon-rule1-2026-09-15-24.5p-expired",
+      "account": "Rule 1",
+      "ticker": "ONON",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2026-09-15",
+      "expiration_date": "2026-09-25",
+      "strike_price": "24.50",
+      "events": {
+        "EXPIRE": "2026-09-25"
+      },
+      "statement": "Schwab Trader API activity (acct 742), pending the 2026-09-30 statement: Removed due to Expiration (2026-09-25)",
+      "reason": "Expired worthless; not yet recorded in OKW"
+    },
+    {
+      "id": "slv-rule1-2026-09-18-57.5p-expired",
+      "account": "Rule 1",
+      "ticker": "SLV",
+      "trade_type": "RULE ONE PUT",
+      "date_trade_open": "2026-09-18",
+      "expiration_date": "2026-09-25",
+      "strike_price": "57.50",
+      "events": {
+        "EXPIRE": "2026-09-25"
+      },
+      "statement": "Schwab Trader API activity (acct 742), pending the 2026-09-30 statement: Removed due to Expiration (2026-09-25)",
+      "reason": "Expired worthless; not yet recorded in OKW"
+    },
+    {
+      "id": "ual-rule1-2026-09-14-99p-expired",
+      "account": "Rule 1",
+      "ticker": "UAL",
+      "trade_type": "ROCT PUT",
+      "date_trade_open": "2026-09-14",
+      "expiration_date": "2026-09-25",
+      "strike_price": "99.00",
+      "events": {
+        "EXPIRE": "2026-09-25"
+      },
+      "statement": "Schwab Trader API activity (acct 742), pending the 2026-09-30 statement: Removed due to Expiration (2026-09-25)",
+      "reason": "Expired worthless; not yet recorded in OKW"
+    },
+    {
+      "id": "anet-rule1-2026-09-09-130p-fill-price",
+      "account": "Rule 1",
+      "ticker": "ANET",
+      "trade_type": "ROCS BULL PUT SPREAD",
+      "date_trade_open": "2026-09-09",
+      "expiration_date": "2026-12-18",
+      "strike_price": "130.00",
+      "match": {
+        "credit_debit": "0.40"
+      },
+      "set": {
+        "credit_debit": "0.42"
+      },
+      "recompute": true,
+      "statement": "Schwab Trader API activity (acct 742), pending the 2026-09-30 statement: ANET 12/18/2026 130P sold 1 @ 1.84 / 125P bought 1 @ 1.42 = net 0.42",
+      "reason": "OKW recorded 0.40 (order price); Schwab filled 0.42"
+    }
+  ]
+}

@@ -20,7 +20,7 @@ import re
 import sys
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +47,24 @@ OPTION_SYMBOL_RE = re.compile(
 OPTION_SYMBOL_EXP_RE = re.compile(
     r"^(?P<ticker>[A-Z]+)(?P<exp>\d{2}/\d{2}/\d{4})(?P<strike>\d+\.\d{2})EXP\d{2}/\d{2}/\d{2}(?P<right>[PC])$"
 )
+# ...or repeat the expiration without EXP: ONON03/13/202638.0003/13/26P
+OPTION_SYMBOL_DATE_RE = re.compile(
+    r"^(?P<ticker>[A-Z]+)(?P<exp>\d{2}/\d{2}/\d{4})(?P<strike>\d+\.\d{2})\d{2}/\d{2}/\d{2}(?P<right>[PC])$"
+)
+# ...or put PUT/CALL and the company name before the strike:
+# LYFT05/08/2026PUTLYFTINC11.50P
+OPTION_SYMBOL_NAME_RE = re.compile(
+    r"^(?P<ticker>[A-Z]+)(?P<exp>\d{2}/\d{2}/\d{4})(?:PUT|CALL)[^\d$]*?"
+    r"(?P<strike>\d+\.\d{2})(?P<right>[PC])$"
+)
+# ...sometimes with the strike written twice, "$260" then "260.00":
+# COIN11/14/2025PUTCOINBASEGLOBALINC$260260.00P (split in _split_repeated_strike)
+OPTION_SYMBOL_DOLLAR_RE = re.compile(
+    r"^(?P<ticker>[A-Z]+)(?P<exp>\d{2}/\d{2}/\d{4})(?:PUT|CALL)[^\d$]*\$(?P<tail>[\d.]+)(?P<right>[PC])$"
+)
+STRIKE_2DP_RE = re.compile(r"^\d+\.\d{2}$")
+# First 4-decimal number on a transaction line is its Quantity ("(2.0000)").
+RAW_QUANTITY_RE = re.compile(r"\(?(\d+\.\d{4})\)?")
 DESC_OPTION_RE = re.compile(
     r"(?P<right>PUT|CALL)(?P<ticker>[A-Z]+).*?\$(?P<strike>\d+(?:\.\d+)?)\s*EXP(?P<exp>\d{2}/\d{2}/\d{2})",
     re.IGNORECASE,
@@ -136,8 +154,7 @@ def check_expected_fixture(expected: ExpectedLots) -> list[Issue]:
         issues.append(
             Issue(
                 "expected_fixture",
-                f"statement equity walk sums to {walk}, "
-                f"expected_shares={expected.expected_shares}",
+                f"statement equity walk sums to {walk}, expected_shares={expected.expected_shares}",
             )
         )
     return issues
@@ -152,12 +169,32 @@ def _parse_mdy(text: str, *, two_digit_year: bool = False) -> date | None:
         return None
 
 
+def _split_repeated_strike(tail: str) -> Decimal | None:
+    """ "260260.00" -> 260.00: the split where the "$" amount equals the
+    two-decimal strike that follows it. Digits alone are ambiguous, so the
+    repeat is what pins the boundary."""
+    for i in range(1, len(tail)):
+        head, rest = tail[:i], tail[i:]
+        if STRIKE_2DP_RE.match(rest):
+            try:
+                if Decimal(head) == Decimal(rest):
+                    return Decimal(rest)
+            except InvalidOperation:
+                continue
+    return None
+
+
 def parse_option_identity(
     symbol_cusip: str | None, description: str
 ) -> tuple[str, date, Decimal, str] | None:
     """Return (ticker, expiration, strike, PUT|CALL) or None for equity."""
     blob = (symbol_cusip or "").replace(" ", "")
-    for pattern in (OPTION_SYMBOL_RE, OPTION_SYMBOL_EXP_RE):
+    for pattern in (
+        OPTION_SYMBOL_RE,
+        OPTION_SYMBOL_EXP_RE,
+        OPTION_SYMBOL_DATE_RE,
+        OPTION_SYMBOL_NAME_RE,
+    ):
         match = pattern.match(blob)
         if match:
             exp = _parse_mdy(match.group("exp"))
@@ -170,6 +207,13 @@ def parse_option_identity(
                 Decimal(match.group("strike")),
                 right,
             )
+    match = OPTION_SYMBOL_DOLLAR_RE.match(blob)
+    if match:
+        exp = _parse_mdy(match.group("exp"))
+        strike = _split_repeated_strike(match.group("tail"))
+        if exp is not None and strike is not None:
+            right = "PUT" if match.group("right") == "P" else "CALL"
+            return match.group("ticker"), exp, strike, right
     match = DESC_OPTION_RE.search((description or "").replace(" ", ""))
     if not match:
         return None
@@ -181,16 +225,33 @@ def parse_option_identity(
     return ticker, exp, Decimal(match.group("strike")), match.group("right").upper()
 
 
+def row_quantity(row: TxnRow) -> Decimal | None:
+    """Quantity of a statement row. The parser sometimes drops the Quantity
+    column on option rows; the raw statement line still carries it
+    ("(2.0000)"), and failing that it follows from amount, fees and price."""
+    if row.quantity is not None and row.quantity != ZERO:
+        return abs(row.quantity)
+    for line in row.raw_lines or []:
+        match = RAW_QUANTITY_RE.search(line)
+        if match:
+            return Decimal(match.group(1))
+    if row.amount is not None and row.price:
+        return Decimal(round(abs(row.amount + (row.charges or ZERO)) / (row.price * 100)))
+    return None
+
+
 def classify_statement_row(row: TxnRow, ticker: str) -> EquityMove | OptionFill | None:
     ident = parse_option_identity(row.symbol_cusip, row.description)
     category = (row.category or "").strip()
     action = (row.action or "").strip()
-    qty = row.quantity if row.quantity is not None else ZERO
+    qty = row_quantity(row) or ZERO
 
     if ident is not None:
         opt_ticker, exp, strike, right = ident
         if opt_ticker != ticker:
             return None
+        if qty == ZERO:
+            return None  # can't tell how many contracts — never guess 1
         contracts = abs(qty)
         premium = row.price
         action_l = action.lower()
@@ -215,7 +276,7 @@ def classify_statement_row(row: TxnRow, ticker: str) -> EquityMove | OptionFill 
             expiration=exp,
             strike=strike,
             right=right,
-            contracts=contracts if contracts != ZERO else Decimal("1"),
+            contracts=contracts,
             premium=premium,
             action=fill_action,
         )
@@ -253,9 +314,7 @@ def collect_statement_activity(
     return equity, options
 
 
-def reconcile_equity_shares(
-    equity: list[EquityMove], db_shares: Decimal
-) -> list[Issue]:
+def reconcile_equity_shares(equity: list[EquityMove], db_shares: Decimal) -> list[Issue]:
     issues: list[Issue] = []
     statement_total = sum((m.shares for m in equity), ZERO)
     if statement_total != db_shares:
@@ -292,7 +351,10 @@ def reconcile_options(
                 continue
             if trade.expiration_date != fill.expiration:
                 continue
-            if trade.strike_price is None or abs(trade.strike_price - fill.strike) > PRICE_TOLERANCE:
+            if (
+                trade.strike_price is None
+                or abs(trade.strike_price - fill.strike) > PRICE_TOLERANCE
+            ):
                 continue
             contracts = Decimal(trade.num_of_contracts or 0)
             if contracts != fill.contracts and fill.contracts != ZERO:
@@ -326,8 +388,7 @@ def reconcile_options(
                 issues.append(
                     Issue(
                         "premium_drift",
-                        f"trade {trade.id} credit {trade.credit_debit} vs "
-                        f"statement {fill.premium}",
+                        f"trade {trade.id} credit {trade.credit_debit} vs statement {fill.premium}",
                         trade_id=trade.id,
                     )
                 )
@@ -421,6 +482,7 @@ def load_okw_trades(
 def parse_statement_dir(directory: Path, account_suffix: str) -> list[Any]:
     files = sorted(directory.glob(f"*{account_suffix}*"))
     parsed = []
+    seen_periods: set[tuple[date | None, date | None]] = set()
     for path in files:
         if path.suffix.upper() not in {".PDF", ".pdf"}:
             continue
@@ -428,9 +490,18 @@ def parse_statement_dir(directory: Path, account_suffix: str) -> list[Any]:
         if "TDA" in name:
             continue
         try:
-            parsed.append(parse_statement(path))
+            statement = parse_statement(path)
         except Exception as exc:  # noqa: BLE001 — keep going across a dirty dump
             print(f"skip {path.name}: {exc}", file=sys.stderr)
+            continue
+        # A re-downloaded copy ("... (1).PDF") of the same period would count
+        # every row twice; keep one statement per period.
+        period = (statement.meta.period_start, statement.meta.period_end)
+        if statement.meta.period_end is not None and period in seen_periods:
+            print(f"skip duplicate statement {path.name}", file=sys.stderr)
+            continue
+        seen_periods.add(period)
+        parsed.append(statement)
     return parsed
 
 
@@ -476,9 +547,7 @@ def run_reconcile(
             report.okw_trades = len(trades)
             report.issues.extend(reconcile_options(options, trades, events_by_trade))
         elif expected is not None:
-            report.issues.extend(
-                reconcile_equity_shares(equity, Decimal(expected.expected_shares))
-            )
+            report.issues.extend(reconcile_equity_shares(equity, Decimal(expected.expected_shares)))
 
     return report
 

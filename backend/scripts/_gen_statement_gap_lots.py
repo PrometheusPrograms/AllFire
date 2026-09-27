@@ -7,8 +7,11 @@ Covers the three remaining validate_import negative-share flags as of the
 - Roth TSLA: original 30 shares (2013-11-07) plus 5:1 and 3:1 splits.
 - Roth CWT: original 30 shares (2014-02-25) plus one whole-share DRIP
   catch-up (fractional DRIP stays cash-only).
-- Rule 1 OXY: the 2026-04-20 buy is 500 shares on the 742 statement;
-  Schwab API only booked 64. Catch-up 436 at the same price.
+
+The former Rule 1 OXY 436-share catch-up (2026-04-20) is gone: that order's
+500 shares arrived as four partial fills (64 + 2 + 278 + 156) and
+import_schwab now merges them into one 500-share BTO, so a catch-up lot would
+double-count.
 
 ETFs and account 730 are out of scope. STC rows already in the ledger
 (Roth TSLA 50 on 2024-12-24, Roth CWT 35 on 2026-05-13) are not repeated.
@@ -37,9 +40,7 @@ def bto(account, ticker, dt, shares, price, notes, batch):
 
 
 ROTH = "Roth"
-RULE1 = "Rule 1"
 BATCH_467 = "acct467_roth_history"
-BATCH_OXY = "oxy_stmt_catchup"
 
 bto(
     ROTH,
@@ -96,17 +97,6 @@ bto(
     "(2026-04-30). Five whole shares at $248.45 ($966.85 - $718.40) dated on "
     "the last in-window DRIP. 2026-05-14 sale of 35 sh is already a Schwab STC.",
     BATCH_467,
-)
-bto(
-    RULE1,
-    "OXY",
-    "2026-04-20",
-    436,
-    53.95,
-    "Rule 1 (742) 2026-04-30 statement: Purchase 500 OXY @ 53.95 on 2026-04-20. "
-    "Schwab API only booked 64 sh at that price; this is the remaining 436 so "
-    "EOM inventory matches 638 before the 2026-05-15 600-share call assignment.",
-    BATCH_OXY,
 )
 
 out = Path(__file__).with_name("data") / "statement_gap_lots.json"

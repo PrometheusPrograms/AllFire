@@ -60,9 +60,43 @@ Import **into Neon `dev` first**, work the review queue, and only promote when
 `python -m scripts.validate_import` exits 0. Never dump `dev` into staging/prod —
 re-run the same CLIs against each environment. See [ENVIRONMENTS.md](ENVIRONMENTS.md).
 
+### Statements are ground truth
+
+Schwab/TDA statement PDFs are the source of truth for what actually happened:
+fills (contracts, price), expirations, outcomes, dividends, share counts. OKW
+is the strategy log and **loses every conflict** with a statement — e.g. an
+order's quoted limit price recorded instead of the fill (NKE 2026-08-18: OKW
+0.27, filled 0.22), a contract count that never filled, a mistyped expiration.
+Nothing is hand-edited in the database: each conflict becomes a reviewed entry
+in `scripts/data/statement_corrections.json` (with the statement evidence) and
+`scripts.apply_statement_corrections` applies it right after the OKW import.
+Entries match on natural keys, never DB ids, so the same file cleans dev,
+staging and production identically — production should need no cleanup.
+
+Related rules the pipeline enforces:
+- **0-DTE:** store the real expiration. ARORC annualizes with
+  `DTE = MAX(1, EXP − TRADE DATE)` (`app.services.rorc`); don't use a fake
+  Saturday expiration.
+- **Dividend reinvestment (DRIP):** reinvested dividends are never
+  `cash_flows`, and DRIP share fills are never imported (0-share / fractional
+  fills go to review). DRIP shares exist only as consolidated whole-share
+  catch-up BTOs (`manual_entry.py`, `statement_gap_lots.json`).
+- **Cash dividends** come from the statements for all years
+  (`backfill_statement_dividends`), linked to their ticker; bank/margin
+  interest is `INTEREST`, not `DIVIDEND`. Cash dividends reduce cost basis/share
+  alongside premiums.
+
 **Order on `dev`:**
 
 1. `import_historical.py` per account/year, chronologically (§1).
+   Then `python -m scripts.apply_statement_corrections --database-url "$DATABASE_URL"`
+   (`--dry-run` first; it rolls back on any error). Add a correction entry for
+   every OKW-vs-statement conflict that `reconcile_statements` /
+   `check_statement_outcomes` (step 6) finds, and re-run — never patch rows by
+   hand. Run it again after steps 2–3: it's idempotent, and entries that target
+   Schwab or manual rows only match once those exist. Because corrected
+   ASSIGN/EXPIRE events are in place before step 2, the Schwab import skips
+   assignment deliveries and imports genuine market fills (e.g. GDX 2025-01-21).
 2. `import_schwab.py` per account (`--dry-run` first) — see [SCHWAB_IMPORT.md](SCHWAB_IMPORT.md).
    This writes dividends, BTO, **and** STC directly; only rows Schwab can't
    classify land on its `review` list. If a prior Schwab run wrote assignment
@@ -72,27 +106,52 @@ re-run the same CLIs against each environment. See [ENVIRONMENTS.md](ENVIRONMENT
 3. Leftover dividends / adjustments / anything on the Schwab review list via
    `scripts/manual_entry.py` (JSON or CSV). Default `import_batch` is `manual`.
    Account 641 reconstruction: `backend/scripts/data/acct641_manual_entries.json`
-   plus `python -m scripts._load_641_options`. Pre-Schwab-window Roth lots and
-   the Rule 1 OXY under-count:
-   `backend/scripts/data/statement_gap_lots.json`.
+   plus `python -m scripts._load_641_options`. Pre-Schwab-window Roth lots:
+   `backend/scripts/data/statement_gap_lots.json`. (Orders Schwab filled in
+   pieces — e.g. Rule 1 OXY 2026-04-20, 64 + 2 + 278 + 156 — are merged by
+   `import_schwab` in step 2; never add catch-up lots for them.)
 4. Clear the review queue:
    - `needs_review=true` on `trades` (OKW ambiguous parses)
    - Schwab `review` lines printed by `import_schwab` (interest, DRIP,
      assignment/exercise, option fills, `unsupported_type:*`, incomplete
      rows) — each item is a manual row **or** an explicit skip, never a
      silent drop
-5. `python -m scripts.reconcile_statements --database-url "$DATABASE_URL"`
+5. Statement-derived data, then share lots (`--dry-run` first for each):
+   - `python -m scripts.backfill_statement_dividends --database-url "$DATABASE_URL" --statements-dir …`
+     — cash dividends for every year, linked to tickers; reinvested dividends
+     removed; interest relabelled. Idempotent.
+   - `python -m scripts.cleanup_zero_share_trades --database-url "$DATABASE_URL"`
+     — removes 0-share DRIP/fraction BTO/STC rows (writes a JSON backup).
+   - `python -m scripts.backfill_cost_basis --database-url "$DATABASE_URL"`
+     — **required after any import that adds ASSIGN events**: assignment lots
+     only enter `cost_basis` here, so share counts are stale until it runs.
+6. `python -m scripts.check_statement_outcomes --database-url "$DATABASE_URL" --statements-dir …`
+   — read-only; checks every single-leg option trade's contracts, strike and
+   outcome (assigned / expired / partial) against the statements and writes
+   *proposed* correction entries for review (never applies them).
+   Then `python -m scripts.reconcile_statements --database-url "$DATABASE_URL"`
    `--statements-dir … --account rule1 --ticker LULU` (then other tickers).
+   For activity after the latest statement, `python -m scripts.check_schwab_activity`
+   `--database-url … --account rule1|roth --start … --end … --okw-file … --okw-sheet …`
+   (read-only) compares Schwab Trader API fills/expirations/assignments with the
+   DB and OKW. Fixes still go in `statement_corrections.json` — including
+   `"add"` entries for fills OKW never recorded — citing the API activity ids.
    Statements are fill ground truth; OKW is the strategy log. Exit 0 (or a
-   documented exception list). Rule 1 LULU expected remaining shares are 900
+   documented exception list). Each OKW-vs-statement difference it reports
+   becomes a `statement_corrections.json` entry (step 1), not a DB edit.
+   Rule 1 LULU expected remaining shares are 900
    (`scripts/data/lulu_rule1_expected_lots.json`).
-6. `python -m scripts.validate_import --database-url "$DATABASE_URL"`
+7. `python -m scripts.validate_import --database-url "$DATABASE_URL"`
    (`--expected expected.json` when you have spreadsheet year totals). Exit 0 is
    the gate. Re-import or reset `dev` from production and retry until it is.
 
 If EXPIRE events still share the trade's open date, run
 `python -m scripts.backfill_expire_event_dates --database-url "$DATABASE_URL"`
-(`--dry-run` first) instead of `--force` re-importing whole OKW years.
+(`--dry-run` first) instead of `--force` re-importing whole OKW years. Same for
+ASSIGN events: `python -m scripts.backfill_assign_event_dates` — an ASSIGN
+dated on the open date also misdates its cost-basis lot and used to let the
+Schwab import book the share delivery as a duplicate BTO (then run
+`cleanup_assign_duplicates`).
 
 If `trades.delta` / `probability_of_winning` / `final_arorc` /
 `result_net_credit` are still null, run
@@ -116,7 +175,7 @@ and credit), and orphan FKs. Zero-cost split lots, share-decreasing sales, and a
 (description starts with `Assigned`) are
 not treated as implausible basis swings. Inventory gaps that the 2013–2026
 statement PDFs resolve (Roth TSLA original + splits, Roth CWT original + DRIP
-catch-up, Rule 1 OXY 2026-04-20 436-share remainder) live in
+catch-up) live in
 `scripts/data/statement_gap_lots.json` and should be loaded before treating
 negative running-shares as residual.
 

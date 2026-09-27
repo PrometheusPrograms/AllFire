@@ -53,16 +53,5 @@
     "commission_per_share": "0",
     "notes": "Acct 467: CWT DRIP catch-up to whole shares. Statement qty grew from 30 to 35.434 (cost $977.24) then a fractional sale left 35 sh @ $966.85 (2026-04-30). Five whole shares at $248.45 ($966.85 - $718.40) dated on the last in-window DRIP. 2026-05-14 sale of 35 sh is already a Schwab STC.",
     "import_batch": "acct467_roth_history"
-  },
-  {
-    "kind": "bto",
-    "account": "Rule 1",
-    "ticker": "OXY",
-    "date": "2026-04-20",
-    "shares": 436,
-    "price": "53.9500",
-    "commission_per_share": "0",
-    "notes": "Rule 1 (742) 2026-04-30 statement: Purchase 500 OXY @ 53.95 on 2026-04-20. Schwab API only booked 64 sh at that price; this is the remaining 436 so EOM inventory matches 638 before the 2026-05-15 600-share call assignment.",
-    "import_batch": "oxy_stmt_catchup"
   }
 ]

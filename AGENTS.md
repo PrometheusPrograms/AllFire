@@ -55,6 +55,14 @@ manual `ALTER TABLE`. Full detail: `docs/ARCHITECTURE.md`, `docs/DATA_MODEL.md`.
    genuinely absent from prod's route table, not just hidden.
 6. Pure calculation logic lives in `backend/app/services/*.py`, tested in isolation
    before any route/UI touches it.
+7. Source order: (1) Schwab/TDA statement PDFs are ground truth; (2) the Schwab
+   Trader API is authoritative only for activity after the latest available
+   statement (`scripts/check_schwab_activity.py`); (3) OKW is supplemental
+   (strategy, trade type, notes) and loses every conflict. Fix a
+   conflict as a reviewed entry in `backend/scripts/data/statement_corrections.json`
+   (natural keys, never DB ids) applied by `scripts.apply_statement_corrections` —
+   never a hand edit — so staging/prod imports come out clean. Pipeline order and the
+   DRIP / 0-DTE / dividend rules: `docs/PRODUCTION_IMPORT_RUNBOOK.md` §3.
 
 ## Key files
 - `backend/app/main.py` — router registration (routers are only wired in here).
@@ -86,11 +94,14 @@ manual `ALTER TABLE`. Full detail: `docs/ARCHITECTURE.md`, `docs/DATA_MODEL.md`.
     default `manual`). Account 641: `scripts/data/acct641_manual_entries.json`
     (`acct641_migration`) plus `_load_641_options.py`. Pre-API / under-counted
     lots from PDFs: `scripts/data/statement_gap_lots.json` (Roth TSLA/CWT
-    `acct467_roth_history`, Rule 1 OXY `oxy_stmt_catchup`). LULU Rule 1 9-vs-10
+    `acct467_roth_history`). Partial fills of one order are merged by
+    `import_schwab` (no catch-up lots for them). LULU Rule 1 9-vs-10
     share API under-count: `repair_lulu_truncated_btos.py`. GOOG/GOOGL 20:1
     split restated onto the 2014 lot: `repair_641_split_lots.py`.
   - `validate_import.py` — read-only promotion gate: recompute ARORC/premium/cost
     basis, structural checks. Must exit 0 on the target DB before staging/prod.
+  - `check_schwab_activity.py` — read-only Schwab API vs DB/OKW for activity
+    newer than the last statement (fills, expirations, assignments, stock buys).
   - `reconcile_statements.py` — read-only OKW/`cost_basis` vs Schwab PDF
     transactions (statements are fill ground truth). LULU Rule 1 expected
     lots: `scripts/data/lulu_rule1_expected_lots.json` (900 sh).

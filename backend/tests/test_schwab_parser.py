@@ -90,6 +90,76 @@ def test_equity_sell_rounds_fractional_shares_instead_of_truncating():
     assert sell.order_id == "88002"
 
 
+def _cwt_reinvestment() -> list[dict]:
+    """Roth CWT 2024-11-22: a plain cash dividend (no DRIP wording, no symbol)
+    and the fractional buy it funded, exactly as the Trader API posts them."""
+    return [
+        {
+            "activityId": "cwt-div",
+            "tradeDate": "2024-11-22T05:00:00+0000",
+            "type": "DIVIDEND_OR_INTEREST",
+            "description": "CALIFORNIA WTR SVC GROUP",
+            "netAmount": 9.87,
+            "transferItems": [],
+        },
+        {
+            "activityId": "cwt-drip-buy",
+            "tradeDate": "2024-11-22T05:00:00+0000",
+            "type": "TRADE",
+            "description": "CALIFORNIA WTR SVC GROUP",
+            "netAmount": -9.87,
+            "transferItems": [
+                {
+                    "instrument": {"assetType": "EQUITY", "symbol": "CWT"},
+                    "amount": 0.1897,
+                    "price": 52.0427,
+                    "cost": -9.87,
+                    "instruction": "BUY",
+                    "positionEffect": "OPENING",
+                }
+            ],
+        },
+    ]
+
+
+def test_reinvestment_buy_and_its_dividend_both_go_to_review():
+    parsed = classify_transactions(_cwt_reinvestment())
+    assert parsed.dividends == []
+    assert parsed.equity_buys == []
+    assert {(item.activity_id, item.reason) for item in parsed.review} == {
+        ("cwt-div", "drip"),
+        ("cwt-drip-buy", "drip"),
+    }
+
+
+def test_cash_dividend_without_a_matching_fractional_buy_still_imports():
+    dividend_only = [txn for txn in _cwt_reinvestment() if txn["type"] != "TRADE"]
+    parsed = classify_transactions(dividend_only)
+    assert [d.activity_id for d in parsed.dividends] == ["cwt-div"]
+
+
+def test_sub_one_share_sale_goes_to_review():
+    txn = {
+        "activityId": "frac-sell",
+        "tradeDate": "2026-04-30T05:00:00+0000",
+        "type": "TRADE",
+        "description": "CALIFORNIA WTR SVC GROUP",
+        "netAmount": 21.40,
+        "transferItems": [
+            {
+                "instrument": {"assetType": "EQUITY", "symbol": "CWT"},
+                "amount": -0.434,
+                "price": 49.31,
+                "instruction": "SELL",
+                "positionEffect": "CLOSING",
+            }
+        ],
+    }
+    parsed = classify_transactions([txn])
+    assert parsed.equity_sells == []
+    assert [(i.activity_id, i.reason) for i in parsed.review] == [("frac-sell", "drip")]
+
+
 def test_review_covers_interest_drip_option_assignment_journal():
     parsed = classify_transactions(_rows())
     reasons = {item.reason: item.activity_id for item in parsed.review}
@@ -105,3 +175,44 @@ def test_review_covers_interest_drip_option_assignment_journal():
         "2004",
         "3001",
     }
+
+
+def _onon_fill(activity_id: str, shares: int, net: float) -> dict:
+    return {
+        "activityId": activity_id,
+        "tradeDate": "2026-09-22T18:31:15+0000",
+        "type": "TRADE",
+        "orderId": 1008020619900,
+        "netAmount": net,
+        "transferItems": [
+            {
+                "instrument": {"assetType": "EQUITY", "symbol": "ONON"},
+                "amount": shares,
+                "price": 29.75,
+                "positionEffect": "OPENING",
+            }
+        ],
+    }
+
+
+def test_partial_fills_of_one_order_merge_into_one_buy():
+    parsed = classify_transactions(
+        [_onon_fill("131406568212", 40, -1190.0), _onon_fill("131406568210", 60, -1785.0)]
+    )
+    assert len(parsed.equity_buys) == 1
+    buy = parsed.equity_buys[0]
+    assert (buy.shares, buy.price, buy.activity_id) == (100, Decimal("29.7500"), "131406568210")
+
+
+def test_bank_sweep_interest_is_not_a_dividend():
+    txn = {
+        "activityId": "bank-int",
+        "tradeDate": "2026-09-16T04:00:00+0000",
+        "type": "DIVIDEND_OR_INTEREST",
+        "description": "BANK INT 081626-091526 TD BANK USA NA",
+        "netAmount": 0.2,
+        "transferItems": [],
+    }
+    parsed = classify_transactions([txn])
+    assert parsed.dividends == []
+    assert [item.reason for item in parsed.review] == ["interest"]

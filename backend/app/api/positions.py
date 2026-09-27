@@ -13,7 +13,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import case, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -42,6 +42,9 @@ class PositionSummaryOut(BaseModel):
     trading: ClassTotalsOut
     long_term: ClassTotalsOut
     total_premium_collected: Decimal
+    # Lifetime cash dividends for this ticker in this account. Like premium,
+    # these reduce the effective cost basis (see the ticker drawer).
+    total_dividends_received: Decimal
 
 
 def _class_totals_out(totals) -> ClassTotalsOut:
@@ -213,6 +216,14 @@ def get_position_summary(
         start=Decimal("0"),
     )
 
+    total_dividends_received = db.scalar(
+        select(func.coalesce(func.sum(CashFlow.amount), 0)).where(
+            CashFlow.account_id == account_id,
+            CashFlow.ticker_id == ticker_id,
+            CashFlow.transaction_type == "DIVIDEND",
+        )
+    )
+
     return PositionSummaryOut(
         ticker=ticker,
         account_name=account,
@@ -220,6 +231,7 @@ def get_position_summary(
         trading=_class_totals_out(totals.trading),
         long_term=_class_totals_out(totals.long_term),
         total_premium_collected=total_premium_collected,
+        total_dividends_received=Decimal(total_dividends_received),
     )
 
 

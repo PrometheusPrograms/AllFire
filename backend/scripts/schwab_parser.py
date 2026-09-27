@@ -6,7 +6,8 @@ anonymized fixtures in `tests/fixtures/schwab_transactions.json`.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import re
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
@@ -163,8 +164,16 @@ def _whole_shares(qty: Decimal) -> int:
     return int(abs(qty).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
+# Bank-sweep and margin interest post as DIVIDEND_OR_INTEREST with no
+# "INTEREST" in the text: "BANK INT 081626-091526 TD BANK USA NA", "SCHWAB1 INT
+# ...", "MGN INT ADJ".
+INTEREST_DESCRIPTION_RE = re.compile(r"\b(BANK INT|SCHWAB1 INT|MGN INT)\b")
+
+
 def _looks_like_interest(txn: dict[str, Any]) -> bool:
     desc = (_description(txn) or "").upper()
+    if INTEREST_DESCRIPTION_RE.search(desc):
+        return True
     activity = str(txn.get("activityType") or "").upper()
     # Do not use `type` — Schwab's DIVIDEND_OR_INTEREST always contains "DIVIDEND".
     blob = _blob(desc, activity)
@@ -184,6 +193,46 @@ def _looks_like_drip(txn: dict[str, Any], equity: list[dict[str, Any]]) -> bool:
     }
 
 
+# A reinvested dividend and its fractional buy post within a few days of each
+# other for the same dollars.
+DRIP_MATCH_DAYS = 3
+DRIP_MATCH_AMOUNT = Decimal("0.05")
+
+
+def _is_fractional_buy(txn: dict[str, Any], equity: list[dict[str, Any]]) -> bool:
+    """A TRADE buying a non-whole share count — how Schwab posts the buy leg of
+    a dividend reinvestment (e.g. 0.1897 sh CWT)."""
+    if str(txn.get("type") or "").upper() != "TRADE" or len(equity) != 1:
+        return False
+    shares = _share_qty(equity[0])
+    return shares > ZERO and shares != shares.to_integral_value()
+
+
+def _reinvestment_buys(transactions: list[dict[str, Any]]) -> list[tuple[date, Decimal]]:
+    """(date, dollars) of every fractional buy in the batch, so the dividend that
+    funded it can be recognized as reinvested — the dividend itself carries no
+    DRIP marker and usually no instrument symbol."""
+    buys = []
+    for txn in transactions:
+        txn_date = _activity_date(txn)
+        net = _as_decimal(txn.get("netAmount"))
+        if txn_date and net is not None and _is_fractional_buy(txn, _equity_items(txn)):
+            buys.append((txn_date, abs(net)))
+    return buys
+
+
+def _funds_reinvestment(
+    txn_date: date, amount: Decimal | None, reinvestment_buys: list[tuple[date, Decimal]]
+) -> bool:
+    if amount is None:
+        return False
+    return any(
+        abs((buy_date - txn_date).days) <= DRIP_MATCH_DAYS
+        and abs(buy_amount - abs(amount)) <= DRIP_MATCH_AMOUNT
+        for buy_date, buy_amount in reinvestment_buys
+    )
+
+
 def _looks_like_assignment(txn: dict[str, Any]) -> bool:
     blob = _blob(_description(txn), str(txn.get("type") or ""), str(txn.get("activityType") or ""))
     return any(word in blob for word in ("ASSIGN", "EXERCISE", "EXPIRED", "REDEMPTION"))
@@ -195,6 +244,7 @@ def _instruction(item: dict[str, Any]) -> str:
 
 def classify_transactions(transactions: list[dict[str, Any]]) -> ParseResult:
     result = ParseResult()
+    reinvestment_buys = _reinvestment_buys(transactions)
     for txn in transactions:
         activity_id = _as_str_id(txn.get("activityId") or txn.get("activity_id"))
         if not activity_id:
@@ -250,12 +300,15 @@ def classify_transactions(transactions: list[dict[str, Any]]) -> ParseResult:
                     ReviewItem(activity_id=activity_id, reason="interest", description=desc)
                 )
                 continue
-            if _looks_like_drip(txn, equity):
+            net = _as_decimal(txn.get("netAmount"))
+            reinvested = _funds_reinvestment(txn_date, net, reinvestment_buys)
+            if _looks_like_drip(txn, equity) or reinvested:
+                # Reinvested dollars are never cash_flows — the shares they bought
+                # are caught up as a consolidated whole-share BTO instead.
                 result.review.append(
                     ReviewItem(activity_id=activity_id, reason="drip", description=desc)
                 )
                 continue
-            net = _as_decimal(txn.get("netAmount"))
             if net is None or net <= ZERO:
                 result.review.append(
                     ReviewItem(
@@ -289,6 +342,14 @@ def classify_transactions(transactions: list[dict[str, Any]]) -> ParseResult:
                 continue
             item = equity[0]
             shares = _share_qty(item)
+            if "DRIP" in _blob(desc) or "REINVEST" in _blob(desc) or _whole_shares(shares) == 0:
+                # Reinvestment fills (and sub-one-share fractions sold off) never
+                # import: a 0-share BTO/STC is meaningless, and DRIP shares are
+                # caught up as one consolidated whole-share lot.
+                result.review.append(
+                    ReviewItem(activity_id=activity_id, reason="drip", description=desc)
+                )
+                continue
             instruction = _instruction(item)
             is_sell = shares < ZERO or instruction in {"SELL", "CLOSING"}
             is_buy = shares > ZERO or instruction in {"BUY", "OPENING"}
@@ -377,4 +438,47 @@ def classify_transactions(transactions: list[dict[str, Any]]) -> ParseResult:
                 description=desc,
             )
         )
+    result.equity_buys = _merge_order_fills(result.equity_buys)
+    result.equity_sells = _merge_order_fills(result.equity_sells)
     return result
+
+
+def _merge_order_fills(fills: list[Any]) -> list[Any]:
+    """One trade per order: Schwab posts each partial fill as its own TRADE
+    (ONON Roth 2026-09-22: 60 + 40 @ 29.75 on one order), and the loader dedupes
+    on order id, so unmerged partials after the first were silently dropped.
+    The merged fill keeps the lowest activity id; price is share-weighted."""
+    groups: dict[tuple[str, str, date], list[Any]] = {}
+    merged: list[Any] = []
+    for fill in fills:
+        if fill.order_id is None:
+            merged.append(fill)
+            continue
+        key = (fill.order_id, fill.ticker, fill.transaction_date)
+        if key not in groups:
+            groups[key] = []
+            merged.append(key)
+        groups[key].append(fill)
+    out = []
+    for entry in merged:
+        if not isinstance(entry, tuple):
+            out.append(entry)
+            continue
+        parts = groups[entry]
+        if len(parts) == 1:
+            out.append(parts[0])
+            continue
+        shares = sum(part.shares for part in parts)
+        price = (sum(part.price * part.shares for part in parts) / shares).quantize(
+            Decimal("0.0001"), rounding=ROUND_HALF_UP
+        )
+        first = min(parts, key=lambda part: (len(part.activity_id), part.activity_id))
+        out.append(
+            replace(
+                first,
+                shares=shares,
+                price=price,
+                fees=sum((part.fees for part in parts), ZERO),
+            )
+        )
+    return out

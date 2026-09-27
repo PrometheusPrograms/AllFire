@@ -79,11 +79,16 @@ predates STC support but is kept for `import_batch` continuity).
 | Equity BUY matching an ASSIGN cost-basis lot (or contracts×100 at/near the strike within 45 settlement days) | Skip (OKW assignment, not a BTO) |
 | Equity SELL matching a CALL ASSIGN lot (contracts×100 at/near the strike within 45 settlement days; a fill may cover several lots) | Skip (OKW assignment, not an STC) |
 | DRIP, interest, option fills, journals, assignment/exercise, incomplete rows (missing ticker/shares/price) | Printed as `review` — not imported. Work these via `scripts/manual_entry.py` or an explicit skip (see PRODUCTION_IMPORT_RUNBOOK.md §3). |
+| Bank / margin interest (`BANK INT …`, `SCHWAB1 INT …`, `MGN INT …`) | `review` as `interest` — never a DIVIDEND |
+| Dividend with no symbol (the API sends only the payer's name) | Ticker taken from earlier linked dividends with the same name; unknown or ambiguous names go to `review` as `dividend_ticker_unknown`, never stored unlinked |
+| Several partial fills of one order | Merged into one BTO/STC (total shares, share-weighted price); an order already stored with fewer shares is flagged `order_share_mismatch` |
+| Dividend whose cash buys fractional shares within 3 days (reinvested), or a fill that rounds to 0 whole shares | `review` as `drip` — reinvested dollars are never `cash_flows`; DRIP shares are a consolidated catch-up BTO |
 
-Both BTO and STC math roll up automatically: `cost_basis` running totals and
-`v_cost_basis_running` are computed at query time from whatever rows exist,
-so no separate "recompute" step is needed after an import — the app's
-existing trades/analytics endpoints reflect new rows on the next request.
+The BTO/STC rows written here carry their own `cost_basis` rows, and running
+totals (`v_cost_basis_running`) are computed at query time — no recompute is
+needed for them. **Assignment lots are different:** they only enter
+`cost_basis` via `scripts.backfill_cost_basis`, which must run after any OKW
+import that adds ASSIGN events, or share counts go stale.
 Share quantities are rounded to the nearest whole share (`ROUND_HALF_UP`);
 truncating with `int()` under-counted lots (e.g. LULU 9 vs statement 10).
 

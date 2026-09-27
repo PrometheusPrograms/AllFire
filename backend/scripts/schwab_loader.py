@@ -12,10 +12,10 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Literal
 
-from sqlalchemy import delete, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.models import CashFlow, CostBasis, Trade, TradeEvent
+from app.models import CashFlow, CostBasis, Ticker, Trade, TradeEvent
 from scripts.okw_loader import get_or_create_account, get_or_create_ticker, get_trade_type
 from scripts.schwab_parser import CashDividend, EquityBuy, EquitySell, ReviewItem
 
@@ -50,6 +50,24 @@ def _prices_similar(left: Decimal | None, right: Decimal | None) -> bool:
     if left is None or right is None:
         return True
     return abs(left - right) <= PRICE_TOLERANCE
+
+
+def _dividend_ticker_from_history(session: Session, description: str | None) -> str | None:
+    """Schwab dividend rows carry only the payer's name (no symbol). Reuse the
+    ticker earlier dividends with the same name were linked to (statement
+    backfill), but only when that name maps to exactly one ticker."""
+    if not description:
+        return None
+    rows = session.execute(
+        select(Ticker.ticker)
+        .join(CashFlow, CashFlow.ticker_id == Ticker.id)
+        .where(
+            CashFlow.transaction_type == "DIVIDEND",
+            func.upper(func.trim(CashFlow.description)) == description.strip().upper(),
+        )
+        .distinct()
+    ).all()
+    return rows[0][0] if len(rows) == 1 else None
 
 
 def _existing_cash_flow(session: Session, activity_id: str) -> CashFlow | None:
@@ -136,6 +154,9 @@ def _assign_candidates(
 ) -> list[tuple[Trade, TradeEvent]]:
     types = PUT_LIKE_ASSIGNABLE if side == "buy" else CALL_LIKE_ASSIGNABLE
     window_start = txn_date - timedelta(days=ASSIGN_SETTLEMENT_DAYS)
+    # The contract expiration counts too, not just the ASSIGN event_date: older
+    # OKW loads stamped ASSIGN on the day the option was sold, which pushed the
+    # lot outside this window and double-counted the shares (GDXY, Rule 1).
     return list(
         session.execute(
             select(Trade, TradeEvent)
@@ -145,8 +166,13 @@ def _assign_candidates(
                 Trade.ticker_id == ticker_id,
                 Trade.trade_type.in_(types),
                 TradeEvent.event_type == "ASSIGN",
-                TradeEvent.event_date >= window_start,
-                TradeEvent.event_date <= txn_date,
+                or_(
+                    and_(TradeEvent.event_date >= window_start, TradeEvent.event_date <= txn_date),
+                    and_(
+                        Trade.expiration_date >= window_start,
+                        Trade.expiration_date <= txn_date,
+                    ),
+                ),
             )
         ).all()
     )
@@ -235,6 +261,22 @@ def delete_schwab_rows_matching_assign(
     return deleted_ids
 
 
+def _flag_short_order(result: SchwabLoadResult, existing: Trade, fill: EquityBuy | EquitySell) -> None:
+    """An order imported before partial fills were merged may hold only its
+    first fill; surface it rather than silently under-counting shares."""
+    if existing.num_of_shares != fill.shares:
+        result.review.append(
+            ReviewItem(
+                activity_id=fill.activity_id,
+                reason=(
+                    f"order_share_mismatch: trade #{existing.id} has "
+                    f"{existing.num_of_shares} sh, order filled {fill.shares}"
+                ),
+                description=fill.description,
+            )
+        )
+
+
 def load_schwab(
     session: Session,
     *,
@@ -260,7 +302,19 @@ def load_schwab(
         if _existing_cash_flow(session, dividend.activity_id) is not None:
             result.dividends_skipped += 1
             continue
-        ticker = get_or_create_ticker(session, dividend.ticker) if dividend.ticker else None
+        symbol = dividend.ticker or _dividend_ticker_from_history(session, dividend.description)
+        if symbol is None:
+            # Never store an unattributed dividend: it can't reduce any cost
+            # basis. The statement backfill links it once the PDF is out.
+            result.review.append(
+                ReviewItem(
+                    activity_id=dividend.activity_id,
+                    reason="dividend_ticker_unknown",
+                    description=dividend.description,
+                )
+            )
+            continue
+        ticker = get_or_create_ticker(session, symbol)
         result.dividends_created += 1
         if dry_run:
             continue
@@ -282,8 +336,9 @@ def load_schwab(
         if _existing_trade_by_activity(session, buy.activity_id) is not None:
             result.btos_skipped_existing += 1
             continue
-        if buy.order_id and _existing_trade_by_order(session, buy.order_id) is not None:
+        if buy.order_id and (existing := _existing_trade_by_order(session, buy.order_id)) is not None:
             result.btos_skipped_existing += 1
+            _flag_short_order(result, existing, buy)
             continue
         ticker = get_or_create_ticker(session, buy.ticker)
         if _matching_bto(session, account_id=account.id, ticker_id=ticker.id, buy=buy) is not None:
@@ -353,8 +408,9 @@ def load_schwab(
         if _existing_trade_by_activity(session, sell.activity_id) is not None:
             result.stcs_skipped_existing += 1
             continue
-        if sell.order_id and _existing_trade_by_order(session, sell.order_id) is not None:
+        if sell.order_id and (existing := _existing_trade_by_order(session, sell.order_id)) is not None:
             result.stcs_skipped_existing += 1
+            _flag_short_order(result, existing, sell)
             continue
         ticker = get_or_create_ticker(session, sell.ticker)
         if (

@@ -9,7 +9,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
 
-engine = create_engine(settings.sqlalchemy_database_url)
+# pool_pre_ping: Neon closes idle connections (scale-to-zero, "terminating
+# connection due to administrator command"); without a ping the first request
+# after an idle stretch reuses a dead pooled connection and 500s.
+engine = create_engine(settings.sqlalchemy_database_url, pool_pre_ping=True)
 
 # Schema `server_default`s use Postgres's `now()` — this app targets Postgres
 # in every real environment. SQLite (used only for quick local scripts/tests,

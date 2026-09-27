@@ -59,8 +59,10 @@ def test_rorc_negative_risk_capital_returns_zero():
     assert calculate_rorc(Decimal("1.00"), Decimal("-5")) == Decimal("0")
 
 
-def test_arorc_zero_days_returns_zero():
-    assert calculate_arorc(Decimal("0.05"), 0) == Decimal("0")
+def test_arorc_same_day_trade_counts_as_one_day():
+    # 0-DTE trades annualize as if held one day (DTE = MAX(1, EXP - TRADE DATE)).
+    assert calculate_arorc(Decimal("0.05"), 0) == calculate_arorc(Decimal("0.05"), 1)
+    assert calculate_arorc(Decimal("0.05"), 0) == Decimal("0.05") * Decimal("365")
 
 
 def test_arorc_negative_days_returns_zero():

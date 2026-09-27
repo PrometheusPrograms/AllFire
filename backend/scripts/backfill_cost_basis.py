@@ -115,6 +115,27 @@ def _associated_put_id(session: Session, spread: Trade, close_date) -> int | Non
     )
 
 
+def assignment_lot(trade: Trade, type_name: str, event: TradeEvent) -> CostBasis:
+    """The cost_basis row an ASSIGN creates: a put acquires contracts*100 shares
+    at strike, a call gives them up. Shared with
+    `scripts.apply_statement_corrections`, which rebuilds lots it corrects."""
+    contracts = Decimal(trade.num_of_contracts or 0)
+    strike = trade.strike_price or ZERO
+    sign = 1 if type_name in PUT_LIKE_ASSIGNABLE else -1
+    shares = sign * contracts * CONTRACT_MULTIPLIER
+    verb = "Assigned (acquired)" if sign > 0 else "Assigned (called away)"
+    return CostBasis(
+        account_id=trade.account_id,
+        ticker_id=trade.ticker_id,
+        trade_id=trade.id,
+        transaction_date=event.event_date,
+        description=f"{verb}: {type_name} {trade.ticker} {contracts} contracts @ {strike}",
+        shares=int(shares),
+        cost_per_share=strike,
+        total_amount=shares * strike,
+    )
+
+
 def backfill(session: Session, *, dry_run: bool = False) -> BackfillResult:
     result = BackfillResult()
 
@@ -176,22 +197,7 @@ def backfill(session: Session, *, dry_run: bool = False) -> BackfillResult:
             if event is None:
                 result.trades_skipped_no_event += 1
             else:
-                contracts = Decimal(trade.num_of_contracts or 0)
-                strike = trade.strike_price or ZERO
-                sign = 1 if type_name in PUT_LIKE_ASSIGNABLE else -1
-                shares = sign * contracts * CONTRACT_MULTIPLIER
-                total_amount = shares * strike
-                verb = "Assigned (acquired)" if sign > 0 else "Assigned (called away)"
-                row = CostBasis(
-                    account_id=trade.account_id,
-                    ticker_id=trade.ticker_id,
-                    trade_id=trade.id,
-                    transaction_date=event.event_date,
-                    description=f"{verb}: {type_name} {trade.ticker} {contracts} contracts @ {strike}",
-                    shares=int(shares),
-                    cost_per_share=strike,
-                    total_amount=total_amount,
-                )
+                row = assignment_lot(trade, type_name, event)
         else:
             result.trades_skipped_no_event += 1
 
