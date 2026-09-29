@@ -1,0 +1,10 @@
+{
+  "_doc": "Tickers the user excluded from the app entirely (2026-09-27): no trades, lots or dividends are imported for them by import_schwab or backfill_statement_dividends. Schwab API dividends carry only the fund name (and odd variants like '... REVERSE SPLIT EFF'), so name prefixes are listed too.",
+  "tickers": ["CONY", "TSLY", "XYZY"],
+  "description_prefixes": [
+    "YIELDMAX COIN",
+    "TIDAL ETF TR II YIELDMAXCOIN",
+    "YIELDMAX TSLA",
+    "YIELDMAX XYZ"
+  ]
+}

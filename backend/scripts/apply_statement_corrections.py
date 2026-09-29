@@ -15,17 +15,26 @@ Run it right after `scripts.import_historical` and before
 
 Applying a correction:
 - overwrites the listed trade fields (a fix to what was imported, not a
-  lifecycle change — lifecycle stays in trade_events);
+  lifecycle change — lifecycle stays in trade_events), including identity
+  typos: `ticker` (GLTB -> GTLB), `trade_type` (a CALL that was a PUT) and
+  `account` (booked in Rule 1, filled in Roth) — their ids follow, and any
+  share lot moves with them;
 - with `"recompute": true`, rederives net credit, risk capital, margin capital,
   DTE, ARORC (and the expired result/final ARORC) from the corrected fill with
   the same formulas as the spreadsheet (`app.services.rorc`);
 - sets or adds closing events (`"events": {"EXPIRE": "2026-08-28"}`);
+- sets a closing event's debit fields (`"event_fields": {"ROLL": {"closing_debit":
+  null, "total_debit": "0"}}`) — e.g. clearing an OKW roll's closing debit once
+  that roll's net is stored as the next leg's credit, so it counts once;
 - changes an outcome the statement contradicts
   (`"outcome": {"from": "ASSIGN", "to": "EXPIRE", "date": "2025-01-10"}`);
 - adds a trade the statements (or, before the month's statement exists, the
   Schwab API) show but OKW never recorded (`"add": {"num_of_contracts": 2,
   "credit_debit": "0.35", "commission_per_share": "0.0041"}`) — keyed by the
   entry's natural key, so a re-run finds it and changes nothing;
+- links a roll continuation to the leg it rolled from
+  (`"parent": {"ticker": …, "trade_type": …, "date_trade_open": …,
+  "expiration_date": …, "strike_price": …}`, same account);
 - splits a partial assignment into an assigned trade and an expired sibling
   (`"split": {"assigned_contracts": 1, "expired_contracts": 1, "expire_date": …}`);
 - removes a row the statements show never filled, or a duplicate of another
@@ -62,6 +71,7 @@ from scripts.backfill_cost_basis import (
     PUT_LIKE_ASSIGNABLE,
     assignment_lot,
 )
+from app.services.premium import total_debit_for, trade_shares
 from scripts.okw_loader import get_or_create_ticker, get_trade_type
 
 DEFAULT_FILE = Path(__file__).with_name("data") / "statement_corrections.json"
@@ -118,7 +128,10 @@ def _rebuild_lot(session: Session, trade: Trade) -> str | None:
     if trade.trade_type not in PUT_LIKE_ASSIGNABLE | CALL_LIKE_ASSIGNABLE:
         return None
     lots = list(session.scalars(select(CostBasis).where(CostBasis.trade_id == trade.id)))
-    before = sorted((lot.shares, lot.cost_per_share, lot.transaction_date) for lot in lots)
+    before = sorted(
+        (lot.shares, lot.cost_per_share, lot.transaction_date, lot.ticker_id, lot.account_id)
+        for lot in lots
+    )
     assign = session.scalar(
         select(TradeEvent)
         .where(TradeEvent.trade_id == trade.id, TradeEvent.event_type == "ASSIGN")
@@ -131,7 +144,17 @@ def _rebuild_lot(session: Session, trade: Trade) -> str | None:
         else None
     )
     after = (
-        [] if wanted is None else [(wanted.shares, wanted.cost_per_share, wanted.transaction_date)]
+        []
+        if wanted is None
+        else [
+            (
+                wanted.shares,
+                wanted.cost_per_share,
+                wanted.transaction_date,
+                wanted.ticker_id,
+                wanted.account_id,
+            )
+        ]
     )
     if before == after:
         return None
@@ -235,7 +258,9 @@ def recompute_fill_fields(trade: Trade) -> None:
     strike = trade.strike_price or Decimal("0")
     if trade.long_strike is not None:  # spread: at risk is the width, not the strike
         strike -= trade.long_strike
-    risk_capital = strike - net_credit
+    # Rounded to the column scales so a re-run compares equal to what was stored.
+    net_credit = net_credit.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+    risk_capital = (strike - net_credit).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
     margin_percent = trade.margin_percent if trade.margin_percent is not None else Decimal("1")
     contracts = Decimal(trade.num_of_contracts or 0)
     dte = (trade.expiration_date - trade.date_trade_open).days if trade.expiration_date else 0
@@ -333,7 +358,14 @@ def apply_correction(
         return f"error: unknown account {correction['account']!r}", [], []
     key = {name: correction[name] for name in KEY_FIELDS if name in correction}
     before = {**key, **correction.get("match", {})}
-    after = {**key, **correction.get("set", {})}
+    fixes = dict(correction.get("set", {}))
+    new_account = fixes.pop("account", None)
+    after = {**key, **fixes}
+    after_account_id = account_id
+    if new_account is not None:
+        after_account_id = session.scalar(select(Account.id).where(Account.account_name == new_account))
+        if after_account_id is None:
+            return f"error: unknown account {new_account!r}", [], []
     if "split" in correction:
         after["num_of_contracts"] = correction["split"]["assigned_contracts"]
     expected = int(correction.get("expect", 1))
@@ -346,7 +378,7 @@ def apply_correction(
             return added_note, [], []
         trades = [added]
     if not trades:
-        if correction.get("remove") or _find(session, account_id, after):
+        if correction.get("remove") or _find(session, after_account_id, after):
             return "already_applied", [], []
         return "error: no trade matches", [], []
     if len(trades) != expected:
@@ -369,11 +401,21 @@ def apply_correction(
     for trade in trades:
         trade_changes = [added_note] if added_note else []
         touched = [trade]
-        for name, raw in correction.get("set", {}).items():
+        for name, raw in fixes.items():
             value = _coerce(name, raw)
             if getattr(trade, name) != value:
                 trade_changes.append(f"{name} {getattr(trade, name)} -> {value}")
                 setattr(trade, name, value)
+                if name == "ticker":
+                    trade.ticker_id = get_or_create_ticker(session, value).id
+                elif name == "trade_type":
+                    trade_type = get_trade_type(session, value)
+                    if trade_type is None:
+                        return f"error: unknown trade type {value!r}", [], []
+                    trade.trade_type_id = trade_type.id
+        if new_account is not None and trade.account_id != after_account_id:
+            trade_changes.append(f"account -> {new_account}")
+            trade.account_id = after_account_id
         if correction.get("recompute"):
             snapshot = (
                 trade.net_credit_per_share,
@@ -394,9 +436,62 @@ def apply_correction(
         for event_type, on in correction.get("events", {}).items():
             if note := _set_event(session, trade, event_type, date.fromisoformat(on)):
                 trade_changes.append(note)
+        for event_type, values in correction.get("event_fields", {}).items():
+            event = session.scalar(
+                select(TradeEvent).where(
+                    TradeEvent.trade_id == trade.id, TradeEvent.event_type == event_type
+                )
+            )
+            if event is None:
+                return f"error: #{trade.id} has no {event_type} event", [], []
+            values = dict(values)
+            if "closing_debit" in values:
+                # TOTAL DEBIT always follows the per-share closing debit x shares.
+                closing = None if values["closing_debit"] is None else Decimal(str(values["closing_debit"]))
+                derived = (
+                    total_debit_for(closing, trade_shares(trade.num_of_shares, trade.num_of_contracts))
+                    if closing
+                    else Decimal("0")
+                )
+                given = values.get("total_debit")
+                if given is not None and Decimal(str(given)) != derived:
+                    return (
+                        f"error: #{trade.id} total_debit {given} != closing_debit x shares ({derived})",
+                        [],
+                        [],
+                    )
+                values["total_debit"] = derived
+            for name, raw in values.items():
+                value = None if raw is None else Decimal(str(raw))
+                if getattr(event, name) != value:
+                    trade_changes.append(f"{event_type} {name} {getattr(event, name)} -> {value}")
+                    setattr(event, name, value)
         if "outcome" in correction:
             if note := _change_outcome(session, trade, correction["outcome"]):
                 trade_changes.append(note)
+            elif not any(
+                e.event_type == correction["outcome"]["to"]
+                for e in session.scalars(select(TradeEvent).where(TradeEvent.trade_id == trade.id))
+            ):
+                # Neither the outcome to replace nor the corrected one exists:
+                # the entry names the wrong current outcome. Fail loudly.
+                return (
+                    f"error: #{trade.id} has no {correction['outcome']['from']} "
+                    f"(or {correction['outcome']['to']}) event to correct",
+                    [],
+                    [],
+                )
+        if "parent" in correction:
+            parents = _find(session, account_id, correction["parent"])
+            if len(parents) != 1:
+                return (
+                    f"error: parent matched {len(parents)} trade(s) ({[p.id for p in parents]})",
+                    [],
+                    [],
+                )
+            if trade.trade_parent_id != parents[0].id:
+                trade.trade_parent_id = parents[0].id
+                trade_changes.append(f"rolled from #{parents[0].id}")
         if "split" in correction:
             sibling, note = _split_off_expired(
                 session, trade, correction["split"], today=today, reason=correction["reason"]

@@ -162,3 +162,31 @@ def test_bucket_premium_day_bucket():
 
 def test_bucket_premium_inverted_range_returns_empty_list():
     assert bucket_premium([], date(2026, 1, 10), date(2026, 1, 1)) == []
+
+
+def test_premium_for_trade_nets_out_an_okw_closing_debit():
+    from decimal import Decimal
+
+    from app.services.premium import premium_for_trade
+
+    # GOOG col WZ: NC 1.7759 x 1 contract = 177.59, rolled for a 0.35 debit
+    # (OKW TOTAL DEBIT -35) -> 142.59.
+    assert premium_for_trade(
+        trade_type_category="OPTIONS", is_credit=True,
+        net_credit_per_share=Decimal("1.7759"), num_of_contracts=1, total_debit=Decimal("-35"),
+    ) == Decimal("142.5900")
+
+
+def test_total_debit_is_closing_debit_times_shares_negated():
+    from decimal import Decimal
+
+    import pytest
+
+    from app.services.premium import total_debit_for, trade_shares
+
+    assert trade_shares(None, 2) == 200 and trade_shares(300, 2) == 300
+    assert total_debit_for(Decimal("0.35"), trade_shares(None, 1)) == Decimal("-35.00")
+    assert total_debit_for(Decimal("0.01"), trade_shares(200, 2)) == Decimal("-2.00")
+    assert total_debit_for(None, 100) is None
+    with pytest.raises(ValueError):
+        total_debit_for(Decimal("0.35"), None)

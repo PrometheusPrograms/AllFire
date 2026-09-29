@@ -43,6 +43,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.models import Account, CashFlow, Ticker
+from scripts.excluded_tickers import is_excluded
 from scripts.okw_loader import get_or_create_ticker
 
 IMPORT_BATCH = "stmt_dividends"
@@ -319,7 +320,9 @@ def read_statement_dividends(statements_dir: Path) -> list[StatementDividend]:
             dividends += dividends_from_current_rows(source_account, parsed.transactions)
     for source_account, transactions in legacy_rows.items():
         dividends += dividends_from_legacy_rows(source_account, transactions)
-    return dedupe_statement_dividends(dividends)
+    return dedupe_statement_dividends(
+        [div for div in dividends if not is_excluded(div.symbol, div.description)]
+    )
 
 
 def _db_dividends(session: Session) -> list[DbDividend]:

@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
+from app.api._trade_sql import trade_total_debit
 from app.db import get_db
 from app.models import Account, CashFlow, CostBasis, Ticker, Trade, TradeEvent, TradeType
 from app.services.position import PositionEntry, classify_share_class, summarize_positions
@@ -107,12 +108,14 @@ def _trade_amount(
     credit_debit: Decimal,
     num_of_contracts: int | None,
     num_of_shares: int | None,
+    total_debit: Decimal | None = None,
 ) -> Decimal | None:
     premium = premium_for_trade(
         trade_type_category=category,
         is_credit=is_credit,
         net_credit_per_share=net_credit_per_share,
         num_of_contracts=num_of_contracts,
+        total_debit=total_debit,
     )
     if premium is not None:
         return premium
@@ -193,6 +196,7 @@ def get_position_summary(
             Trade.num_of_contracts,
             TradeType.category,
             TradeType.is_credit,
+            trade_total_debit.label("total_debit"),
         )
         .select_from(Trade)
         .join(TradeType, TradeType.id == Trade.trade_type_id)
@@ -202,13 +206,14 @@ def get_position_summary(
     total_premium_collected = sum(
         (
             premium
-            for net_credit_per_share, num_of_contracts, category, is_credit in trade_rows
+            for net_credit_per_share, num_of_contracts, category, is_credit, total_debit in trade_rows
             if (
                 premium := premium_for_trade(
                     trade_type_category=category,
                     is_credit=is_credit,
                     net_credit_per_share=net_credit_per_share,
                     num_of_contracts=num_of_contracts,
+                    total_debit=total_debit,
                 )
             )
             is not None
@@ -256,6 +261,7 @@ def get_position_ledger(
             Trade.net_credit_per_share,
             Trade.price_per_share,
             Trade.credit_debit,
+            trade_total_debit.label("total_debit"),
             TradeType.category,
             TradeType.is_credit,
             _display_status_expr.label("display_status"),
@@ -288,6 +294,7 @@ def get_position_ledger(
                     credit_debit=row.credit_debit,
                     num_of_contracts=row.num_of_contracts,
                     num_of_shares=row.num_of_shares,
+                    total_debit=row.total_debit,
                 ),
                 display_status=(
                     None if row.trade_type in STOCK_TRADE_TYPES else row.display_status

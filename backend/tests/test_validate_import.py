@@ -319,3 +319,17 @@ def test_run_validation_flags_needs_review_and_duplicates(session_factory):
     assert "premium" in checks
     assert "bankroll" in checks
     assert not report.ok
+
+
+def test_total_debit_must_match_closing_debit_times_shares():
+    from decimal import Decimal
+    from types import SimpleNamespace
+
+    from scripts.validate_import import debit_issues
+
+    trade = SimpleNamespace(id=1, num_of_shares=None, num_of_contracts=1)
+    ok = SimpleNamespace(id=10, trade_id=1, event_type="ROLL", closing_debit=Decimal("0.35"), total_debit=Decimal("-35"))
+    bad = SimpleNamespace(id=11, trade_id=1, event_type="CLOSE", closing_debit=Decimal("5.95"), total_debit=Decimal("595.46"))
+    assert debit_issues([ok], {1: trade}) == []
+    [issue] = debit_issues([bad], {1: trade})
+    assert issue.check == "total_debit" and "-595.00" in issue.detail

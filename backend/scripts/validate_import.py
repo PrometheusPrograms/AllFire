@@ -25,9 +25,9 @@ from typing import Any
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.models import Account, Bankroll, CashFlow, CostBasis, Ticker, Trade, TradeType
+from app.models import Account, Bankroll, CashFlow, CostBasis, Ticker, Trade, TradeEvent, TradeType
 from app.services.cost_basis import calculate_cost_basis
-from app.services.premium import premium_for_trade
+from app.services.premium import premium_for_trade, total_debit_for, trade_shares
 from app.services.rorc import calculate_arorc, calculate_rorc
 
 ZERO = Decimal("0")
@@ -296,6 +296,27 @@ def duplicate_option_keys(trades: list[Trade], type_by_id: dict[int, TradeType])
     return issues
 
 
+def debit_issues(events: list[TradeEvent], trades_by_id: dict[int, Trade]) -> list[Issue]:
+    """Every TOTAL DEBIT must equal -(per-share closing debit x shares)."""
+    issues = []
+    for event in events:
+        trade = trades_by_id.get(event.trade_id)
+        if trade is None or not (event.closing_debit or event.total_debit):
+            continue
+        shares = trade_shares(trade.num_of_shares, trade.num_of_contracts)
+        expected = total_debit_for(event.closing_debit, shares) if event.closing_debit else ZERO
+        if _dec(event.total_debit) != expected:
+            issues.append(
+                Issue(
+                    "total_debit",
+                    f"{event.event_type} event {event.id}: total_debit {event.total_debit} != "
+                    f"closing_debit {event.closing_debit} x {shares} sh ({expected})",
+                    trade_id=trade.id,
+                )
+            )
+    return issues
+
+
 def orphan_issues(
     *,
     trade_ids: set[int],
@@ -446,6 +467,9 @@ def run_validation(session: Session, expected: ExpectedTotals | None = None) -> 
 
     report.issues.extend(walk_cost_basis(list(cost_rows)))
     report.issues.extend(duplicate_option_keys(list(trades), type_by_id))
+    report.issues.extend(
+        debit_issues(list(session.scalars(select(TradeEvent))), {t.id: t for t in trades})
+    )
     report.issues.extend(
         orphan_issues(
             trade_ids={t.id for t in trades},

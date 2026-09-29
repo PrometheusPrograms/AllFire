@@ -24,6 +24,29 @@ DAYS_PER_WEEK = Decimal("7")
 OPTIONS_CONTRACT_MULTIPLIER = Decimal("100")
 
 PremiumEntry = tuple[date, Decimal]
+CENT = Decimal("0.01")
+
+
+def trade_shares(num_of_shares: int | None, num_of_contracts: int | None) -> int | None:
+    """Shares a trade covers: `num_of_shares`, else contracts x 100."""
+    if num_of_shares:
+        return num_of_shares
+    if num_of_contracts:
+        return int(Decimal(num_of_contracts) * OPTIONS_CONTRACT_MULTIPLIER)
+    return None
+
+
+def total_debit_for(closing_debit: Decimal | None, shares: int | None) -> Decimal | None:
+    """OKW `TOTAL DEBIT` from the per-share `CLOSING DEBIT`: closing debit x
+    shares (contracts x 100), stored negative because it reduces the net
+    credit (GOOG col WZ: 0.35 x 100 -> -35.00). The only way a total debit is
+    derived — never typed or copied — so it always agrees with the closing
+    debit."""
+    if closing_debit is None:
+        return None
+    if not shares:
+        raise ValueError("a closing debit needs the trade's share count to total it")
+    return (-closing_debit * Decimal(shares)).quantize(CENT)
 
 
 def premium_for_trade(
@@ -32,8 +55,10 @@ def premium_for_trade(
     is_credit: bool | None,
     net_credit_per_share: Decimal | None,
     num_of_contracts: int | None,
+    total_debit: Decimal | None = None,
 ) -> Decimal | None:
-    """Premium actually collected when this trade was opened, or `None` if
+    """Net premium of this trade — collected when opened, less any closing
+    debit (`total_debit`, OKW-signed) — or `None` if
     it's not a premium-generating trade (wrong category/direction) or is
     missing a field needed to compute it (e.g. a covered call with
     `margin_capital` recorded as "COVERED" text upstream — see
@@ -43,7 +68,12 @@ def premium_for_trade(
         return None
     if net_credit_per_share is None or num_of_contracts is None:
         return None
-    return net_credit_per_share * Decimal(num_of_contracts) * OPTIONS_CONTRACT_MULTIPLIER
+    premium = net_credit_per_share * Decimal(num_of_contracts) * OPTIONS_CONTRACT_MULTIPLIER
+    if total_debit is not None:
+        # OKW's signed TOTAL DEBIT (negative = a closing/roll cost) nets out
+        # of the premium, so a leg rolled for a 0.35 debit counts 1.78 - 0.35.
+        premium += total_debit
+    return premium
 
 
 @dataclass(frozen=True)

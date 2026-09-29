@@ -254,7 +254,15 @@ def client_with_roll():
         seed.flush()
         second.trade_parent_id = first.id
         seed.add(TradeEvent(trade_id=first.id, event_type="OPEN", event_date=date(2026, 1, 2)))
-        seed.add(TradeEvent(trade_id=first.id, event_type="ROLL", event_date=date(2026, 1, 9)))
+        seed.add(
+            TradeEvent(
+                trade_id=first.id,
+                event_type="ROLL",
+                event_date=date(2026, 1, 9),
+                closing_debit=Decimal("0.05"),
+                total_debit=Decimal("-5"),
+            )
+        )
         seed.add(TradeEvent(trade_id=second.id, event_type="OPEN", event_date=date(2026, 1, 9)))
         seed.add(TradeEvent(trade_id=second.id, event_type="EXPIRE", event_date=date(2026, 1, 16)))
         seed.commit()
@@ -392,8 +400,8 @@ def test_list_collapses_roll_chain_to_one_row(client_with_roll):
         client_with_roll.trade_ids["root"],
         client_with_roll.trade_ids["tip"],
     ]
-    # Both legs' premium: 0.22*1*100 + 0.18*1*100
-    assert Decimal(item["premium_collected"]) == Decimal("40")
+    # Both legs' premium: 0.22*1*100 + 0.18*1*100, less the root's 0.05 roll debit (-5)
+    assert Decimal(item["premium_collected"]) == Decimal("35")
     assert Decimal(item["chain_net_credit_per_share"]) == Decimal("0.40")
     assert item["chain_dte"] == 14
     assert item["chain_arorc"] is not None
@@ -445,3 +453,21 @@ def test_get_trade_chain_timeline_links_each_leg(client_with_roll):
     assert tip_leg["result"] == "EXPIRED"
     assert tip_leg["result_date"] == "2026-01-16"
     assert Decimal(str(tip_leg["result_net_credit"])) == Decimal("18")
+
+
+def test_result_net_credit_subtracts_an_okw_closing_debit():
+    from decimal import Decimal
+
+    from app.api.trades import _result_net_credit
+
+    # GOOG col WZ: sold @ 1.78 (NC 1.7759 x 100), rolled with a 0.35 closing
+    # debit that OKW stores as TOTAL DEBIT -35 -> 177.59 - 35 = 142.59.
+    assert _result_net_credit(Decimal("1.7759"), 100, Decimal("-35")) == Decimal("142.5900")
+    assert _result_net_credit(Decimal("1.7759"), 100, None) == Decimal("177.5900")
+
+
+def test_chain_net_subtracts_every_legs_closing_debit(client_with_roll):
+    [item] = client_with_roll.get("/api/trades").json()["items"]
+    # (0.22 + 0.18) x 100 = 40.00, minus the root leg's 0.05 roll debit (-5).
+    assert item["total_debit"] == "-5.00"
+    assert item["result_net_credit"].startswith("35.00")

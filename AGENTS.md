@@ -102,6 +102,10 @@ manual `ALTER TABLE`. Full detail: `docs/ARCHITECTURE.md`, `docs/DATA_MODEL.md`.
     basis, structural checks. Must exit 0 on the target DB before staging/prod.
   - `check_schwab_activity.py` — read-only Schwab API vs DB/OKW for activity
     newer than the last statement (fills, expirations, assignments, stock buys).
+  - `check_rolls.py` — read-only: rolls from Schwab `orderId` (buy-to-close +
+    sell-to-open in one order); checks ROLL date, open date, parent link, and
+    that the new leg's credit is the order's net. `excluded_tickers.py` +
+    `data/excluded_tickers.json` — tickers kept out of every import.
   - `reconcile_statements.py` — read-only OKW/`cost_basis` vs Schwab PDF
     transactions (statements are fill ground truth). LULU Rule 1 expected
     lots: `scripts/data/lulu_rule1_expected_lots.json` (900 sh).

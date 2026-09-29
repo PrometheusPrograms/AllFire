@@ -133,12 +133,17 @@ def _result_net_credit(
     num_of_shares: int | None,
     total_debit: Decimal | None,
 ) -> Decimal | None:
-    """OKW `NET CREDIT/(DEBIT)` — NC × shares, minus total debit when present."""
+    """OKW `NET CREDIT/(DEBIT)` — NC × shares plus the signed total debit.
+
+    OKW books a closing debit as a positive `CLOSING DEBIT` per share and its
+    `TOTAL DEBIT` as the negative dollar amount (GOOG col WZ: 0.35 / -35, net
+    177.59 - 35 = 142.59), so the total is added, not subtracted.
+    """
     if net_credit_per_share is None or num_of_shares is None:
         return net_credit_per_share
     total = net_credit_per_share * Decimal(num_of_shares)
     if total_debit is not None:
-        total -= total_debit
+        total += total_debit
     return total
 
 
@@ -298,6 +303,7 @@ def _premium_for_row(row) -> Decimal | None:
         is_credit=row["is_credit"],
         net_credit_per_share=row["net_credit_per_share"],
         num_of_contracts=row["num_of_contracts"],
+        total_debit=row["total_debit"],
     )
 
 
@@ -342,6 +348,10 @@ def _collapse_chain(legs: list) -> TradeOut:
     combined_nc = None
     if any(nc is not None for nc in net_credits):
         combined_nc = sum((nc for nc in net_credits if nc is not None), start=Decimal("0"))
+    # Every leg's closing debit counts against the chain (GOOG WZ 0.35 and XA
+    # 0.67 are debits on legs before the tip), not just the tip's.
+    debits = [leg["total_debit"] for leg in legs if leg["total_debit"] is not None]
+    chain_total_debit = sum(debits, start=Decimal("0")) if debits else None
     combined_dte = None
     if tip["expiration_date"] is not None:
         combined_dte = (tip["expiration_date"] - root["date_trade_open"]).days
@@ -378,9 +388,9 @@ def _collapse_chain(legs: list) -> TradeOut:
         result=_okw_result(tip["display_status"]),
         result_date=tip["result_event_date"],
         closing_debit=tip["closing_debit"],
-        total_debit=tip["total_debit"],
+        total_debit=chain_total_debit,
         result_net_credit=_result_net_credit(
-            combined_nc, tip["num_of_shares"], tip["total_debit"]
+            combined_nc, tip["num_of_shares"], chain_total_debit
         ),
     )
 

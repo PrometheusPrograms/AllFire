@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
-from app.models import Account, Base, Ticker, Trade, TradeEvent, TradeType
+from app.models import Account, Base, CostBasis, Ticker, Trade, TradeEvent, TradeType
 from scripts.apply_statement_corrections import apply_corrections
 
 TODAY = date(2026, 9, 24)
@@ -356,7 +356,7 @@ def test_recompute_uses_spread_width_for_risk_capital(session_factory):
         expiration_date=date(2026, 12, 18),
     )
     recompute_fill_fields(spread)
-    assert spread.risk_capital_per_share == Decimal("4.58825")
+    assert spread.risk_capital_per_share == Decimal("4.5883")
     assert spread.margin_capital == Decimal("458.83")
 
     call = Trade(
@@ -369,3 +369,94 @@ def test_recompute_uses_spread_width_for_risk_capital(session_factory):
     )
     recompute_fill_fields(call)
     assert call.margin_capital is None
+
+
+def test_parent_links_a_roll_continuation(session_factory):
+    with session_factory() as session:
+        _put(session, contracts=1, credit="0.30", opened=date(2026, 8, 10), expires=date(2026, 8, 21))
+        _put(session, contracts=1, credit="0.25", opened=date(2026, 8, 20), expires=date(2026, 8, 28))
+        session.commit()
+    correction = {
+        **NKE_KEY,
+        "id": "roll-link",
+        "date_trade_open": "2026-08-20",
+        "parent": {
+            "ticker": "NKE", "trade_type": "ROCT PUT", "date_trade_open": "2026-08-10",
+            "expiration_date": "2026-08-21", "strike_price": "38.50",
+        },
+        "reason": "one Schwab order bought back the old leg and sold this one",
+    }
+    with session_factory() as session:
+        result = apply_corrections(session, [correction], today=TODAY)
+        session.commit()
+        assert result.errors == []
+        parent, child = session.query(Trade).order_by(Trade.id).all()
+        assert child.trade_parent_id == parent.id
+        assert apply_corrections(session, [correction], today=TODAY).already_applied == ["roll-link"]
+
+
+def test_identity_fixes_move_ids_and_lot(session_factory):
+    with session_factory() as session:
+        trade_id = _put(session, contracts=1, credit="0.21")
+        session.add(Account(account_name="Roth", account_type="IRA", start_date=date(2020, 1, 1)))
+        session.add(
+            TradeType(
+                type_name="ROCT CALL", category="OPTIONS", is_credit=True,
+                requires_expiration=True, requires_strike=True, requires_contracts=True,
+            )
+        )
+        session.add(TradeEvent(trade_id=trade_id, event_type="ASSIGN", event_date=date(2026, 8, 28)))
+        session.commit()
+    correction = {
+        **NKE_KEY,
+        "id": "identity",
+        "set": {"ticker": "GTLB", "trade_type": "ROCT CALL", "account": "Roth"},
+        "reason": "statement: GTLB call, filled in Roth",
+    }
+    with session_factory() as session:
+        result = apply_corrections(session, [correction], today=TODAY)
+        session.commit()
+        assert result.errors == []
+        trade = session.query(Trade).one()
+        roth = session.query(Account).filter_by(account_name="Roth").one()
+        gtlb = session.query(Ticker).filter_by(ticker="GTLB").one()
+        call = session.query(TradeType).filter_by(type_name="ROCT CALL").one()
+        assert (trade.ticker, trade.ticker_id, trade.trade_type_id, trade.account_id) == (
+            "GTLB", gtlb.id, call.id, roth.id,
+        )
+        [lot] = session.query(CostBasis).all()
+        assert (lot.account_id, lot.ticker_id, lot.shares) == (roth.id, gtlb.id, -100)
+        assert apply_corrections(session, [correction], today=TODAY).already_applied == ["identity"]
+
+
+def test_event_fields_clear_a_roll_closing_debit(session_factory):
+    with session_factory() as session:
+        trade_id = _put(session, contracts=1, credit="1.78")
+        session.add(TradeEvent(trade_id=trade_id, event_type="ROLL", event_date=date(2026, 8, 25),
+                               closing_debit=Decimal("-0.35"), total_debit=Decimal("35")))
+        session.commit()
+    correction = {**NKE_KEY, "id": "roll-debit", "reason": "roll net lives on the next leg",
+                  "event_fields": {"ROLL": {"closing_debit": None, "total_debit": "0"}}}
+    with session_factory() as session:
+        result = apply_corrections(session, [correction], today=TODAY)
+        session.commit()
+        assert result.errors == []
+        roll = session.query(TradeEvent).filter_by(event_type="ROLL").one()
+        assert (roll.closing_debit, roll.total_debit) == (None, Decimal("0"))
+        assert apply_corrections(session, [correction], today=TODAY).already_applied == ["roll-debit"]
+
+
+def test_event_fields_derive_total_debit_from_closing_debit(session_factory):
+    with session_factory() as session:
+        trade_id = _put(session, contracts=2, credit="1.78")
+        session.add(TradeEvent(trade_id=trade_id, event_type="ROLL", event_date=date(2026, 8, 25)))
+        session.commit()
+    derive = {**NKE_KEY, "id": "derive", "reason": "roll cost",
+              "event_fields": {"ROLL": {"closing_debit": "0.35"}}}
+    wrong = {**derive, "id": "wrong", "event_fields": {"ROLL": {"closing_debit": "0.35", "total_debit": "-35"}}}
+    with session_factory() as session:
+        assert apply_corrections(session, [derive], today=TODAY).errors == []
+        roll = session.query(TradeEvent).filter_by(event_type="ROLL").one()
+        assert roll.total_debit == Decimal("-70.00")  # 0.35 x 2 contracts x 100
+        result = apply_corrections(session, [wrong], today=TODAY)
+        assert result.errors and "closing_debit x shares" in result.errors[0]

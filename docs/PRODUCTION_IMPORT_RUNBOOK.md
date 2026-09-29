@@ -85,6 +85,12 @@ Related rules the pipeline enforces:
   (`backfill_statement_dividends`), linked to their ticker; bank/margin
   interest is `INTEREST`, not `DIVIDEND`. Cash dividends reduce cost basis/share
   alongside premiums.
+- **Closing debits.** `CLOSING DEBIT` is per share; `TOTAL DEBIT` is always
+  derived as −(closing debit × shares), shares = contracts × 100 (or the
+  trade's share count) — `app.services.premium.total_debit_for`, used by the
+  OKW loader, the 641 loader and `apply_statement_corrections`; OKW's typed
+  TOTAL DEBIT cell is never copied. Premium (chart, totals, trade net) =
+  credit × shares + total debit. `validate_import` fails on any mismatch.
 
 **Order on `dev`:**
 
@@ -97,6 +103,10 @@ Related rules the pipeline enforces:
    Schwab or manual rows only match once those exist. Because corrected
    ASSIGN/EXPIRE events are in place before step 2, the Schwab import skips
    assignment deliveries and imports genuine market fills (e.g. GDX 2025-01-21).
+   After that second run, `python -m scripts.cleanup_assign_duplicates` (`--dry-run`
+   first) removes any Schwab BTO/STC that still duplicates an assignment lot —
+   e.g. an outcome a correction flipped from EXPIRE/CLOSE to ASSIGN after the
+   delivery was imported.
 2. `import_schwab.py` per account (`--dry-run` first) — see [SCHWAB_IMPORT.md](SCHWAB_IMPORT.md).
    This writes dividends, BTO, **and** STC directly; only rows Schwab can't
    classify land on its `review` list. If a prior Schwab run wrote assignment
@@ -129,6 +139,15 @@ Related rules the pipeline enforces:
    — read-only; checks every single-leg option trade's contracts, strike and
    outcome (assigned / expired / partial) against the statements and writes
    *proposed* correction entries for review (never applies them).
+   Before accepting any `fill_price` proposal, run
+   `python -m scripts.check_rolls --database-url … --account rule1|roth --start … --end …`:
+   a roll (one Schwab order that buys back one leg and sells the next) stores
+   the order's NET credit, so its raw fill is not a correction. `check_rolls`
+   also proposes ROLL dates, open dates, parent links and each roll leg's
+   credit = the order's net (sale − buyback), clearing any OKW closing debit
+   on the rolled leg that held that same net (GOOG WZ/XA) so it counts once —
+   review, add to
+   `statement_corrections.json`, re-run the corrections.
    Then `python -m scripts.reconcile_statements --database-url "$DATABASE_URL"`
    `--statements-dir … --account rule1 --ticker LULU` (then other tickers).
    For activity after the latest statement, `python -m scripts.check_schwab_activity`

@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api._trade_sql import trade_total_debit
 from app.db import get_db
 from app.models import Account, Trade, TradeEvent, TradeType
 from app.services.premium import (
@@ -93,6 +94,7 @@ def _base_trade_query(account: str | None):
             Trade.num_of_contracts,
             Trade.arorc,
             Trade.net_credit_per_share,
+            trade_total_debit.label("total_debit"),
             TradeType.category.label("trade_type_category"),
             TradeType.is_credit,
             _current_status.c.trade_status,
@@ -186,6 +188,7 @@ def get_summary(
             is_credit=r["is_credit"],
             net_credit_per_share=r["net_credit_per_share"],
             num_of_contracts=r["num_of_contracts"],
+            total_debit=r["total_debit"],
         )
         if premium is not None:
             premium_entries.append((r["date_trade_open"], premium))
@@ -235,6 +238,7 @@ def get_premium_timeseries(
             is_credit=r["is_credit"],
             net_credit_per_share=r["net_credit_per_share"],
             num_of_contracts=r["num_of_contracts"],
+            total_debit=r["total_debit"],
         )
         if premium is not None:
             premium_entries.append((r["date_trade_open"], premium))

@@ -16,6 +16,7 @@ from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import CashFlow, CostBasis, Ticker, Trade, TradeEvent
+from scripts.excluded_tickers import is_excluded
 from scripts.okw_loader import get_or_create_account, get_or_create_ticker, get_trade_type
 from scripts.schwab_parser import CashDividend, EquityBuy, EquitySell, ReviewItem
 
@@ -298,7 +299,17 @@ def load_schwab(
 
     result = SchwabLoadResult(review=list(review or []))
 
+    def excluded(activity_id: str, ticker: str | None, description: str | None) -> bool:
+        if not is_excluded(ticker, description):
+            return False
+        result.review.append(
+            ReviewItem(activity_id=activity_id, reason="excluded_ticker", description=description)
+        )
+        return True
+
     for dividend in dividends:
+        if excluded(dividend.activity_id, dividend.ticker, dividend.description):
+            continue
         if _existing_cash_flow(session, dividend.activity_id) is not None:
             result.dividends_skipped += 1
             continue
@@ -333,6 +344,8 @@ def load_schwab(
         )
 
     for buy in equity_buys:
+        if excluded(buy.activity_id, buy.ticker, None):
+            continue
         if _existing_trade_by_activity(session, buy.activity_id) is not None:
             result.btos_skipped_existing += 1
             continue
@@ -405,6 +418,8 @@ def load_schwab(
         )
 
     for sell in equity_sells or []:
+        if excluded(sell.activity_id, sell.ticker, None):
+            continue
         if _existing_trade_by_activity(session, sell.activity_id) is not None:
             result.stcs_skipped_existing += 1
             continue

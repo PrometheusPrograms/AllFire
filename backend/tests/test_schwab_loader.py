@@ -677,3 +677,20 @@ def test_order_imported_with_fewer_shares_is_flagged(session_factory):
         )
     assert result.btos_created == 0
     assert result.review[0].reason.startswith("order_share_mismatch")
+
+
+def test_excluded_tickers_are_never_imported(session_factory):
+    with session_factory() as session:
+        result = load_schwab(
+            session,
+            account_name="Rule 1",
+            import_batch="b",
+            dividends=[_dividend(activity_id="d1", ticker=None, description="YIELDMAX TSLA OPT INCM STGY ETF")],
+            equity_buys=[_buy(activity_id="b1", ticker="CONY", shares=1)],
+            equity_sells=[_sell(activity_id="s1", ticker="XYZY", shares=1)],
+        )
+        session.commit()
+    assert (result.dividends_created, result.btos_created, result.stcs_created) == (0, 0, 0)
+    assert [item.reason for item in result.review] == ["excluded_ticker"] * 3
+    with session_factory() as session:
+        assert session.scalar(select(CashFlow)) is None and session.scalar(select(Trade)) is None

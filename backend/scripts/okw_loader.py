@@ -25,6 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Account, Ticker, Trade, TradeEvent, TradeType
+from app.services.premium import total_debit_for, trade_shares
 from scripts.okw_parser import ParsedTrade
 from scripts.link_roll_parents import apply_roll_parent_links
 
@@ -232,7 +233,14 @@ def load_parsed_trades(
                         if parsed.closing_debit is not None
                         else ZERO
                     ),
-                    total_debit=parsed.total_debit,
+                    # Derived from the per-share closing debit x shares, never
+                    # copied from OKW's TOTAL DEBIT cell (see total_debit_for).
+                    total_debit=total_debit_for(
+                        parsed.closing_debit,
+                        trade_shares(parsed.num_of_shares, parsed.num_of_contracts),
+                    )
+                    if parsed.closing_debit
+                    else ZERO,
                     notes=(
                         f"Imported RESULT={parsed.result_raw!r}" if parsed.result_raw else None
                     ),

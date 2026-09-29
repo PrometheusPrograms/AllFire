@@ -16,6 +16,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.models import Trade, TradeEvent
+from app.services.premium import total_debit_for, trade_shares
 from scripts.okw_loader import get_or_create_account, get_or_create_ticker, get_trade_type
 
 BATCH = "acct641_migration"
@@ -118,7 +119,7 @@ def main() -> int:
                     )
                 )
             else:
-                total_debit = close_price * Decimal(contracts) * 100 + commission_total
+                total_debit = total_debit_for(close_price, trade_shares(None, contracts))
                 session.add(
                     TradeEvent(
                         trade_id=trade.id,
